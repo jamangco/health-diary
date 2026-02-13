@@ -12,8 +12,6 @@ export default function StartWorkout() {
   const {
     currentWorkout,
     setCurrentWorkout,
-    addWorkoutSession,
-    updateWorkoutSession,
     workoutSessions,
   } = useStore();
   
