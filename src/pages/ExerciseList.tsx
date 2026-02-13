@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { Plus, Trash2, Edit, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Exercise, BodyPart } from '../types';
 
 const bodyParts: BodyPart[] = ['가슴', '등', '어깨', '하체', '팔', '복근', '전신', '기타'];
 const EXERCISES_PER_PAGE = 10;
 
 export default function ExerciseList() {
-  const { exercises, addExercise, deleteExercise } = useStore();
+  const { exercises, deleteExercise } = useStore();
   const [selectedBodyPart, setSelectedBodyPart] = useState<BodyPart | 'all'>('all');
   const [showAddForm, setShowAddForm] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);

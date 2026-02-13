@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { format, parseISO } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { Plus, X, Save, Play, Award, Calendar } from 'lucide-react';
+import { Plus, X, Calendar } from 'lucide-react';
 import { WorkoutExercise, WorkoutSet, Routine, BodyPart } from '../types';
 import PRRecordModal from '../components/PRRecordModal';
 import ExerciseSetModal from '../components/ExerciseSetModal';

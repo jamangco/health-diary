@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../store/useStore';
 import { Plus, Edit, Trash2, Calendar, Save } from 'lucide-react';
-import { Routine, RoutineExercise } from '../types';
+import { RoutineExercise } from '../types';
 
 export default function Routines() {
   const { routines, deleteRoutine } = useStore();

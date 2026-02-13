@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
-import { format, startOfWeek, endOfWeek, isWithinInterval, parseISO, isSameDay } from 'date-fns';
+import { format, startOfWeek, endOfWeek, isWithinInterval, parseISO } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { Dumbbell, TrendingUp, Calendar, Award, Activity } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import PRRecordModal from '../components/PRRecordModal';
 import InbodyRecordModal from '../components/InbodyRecordModal';
 
@@ -273,7 +273,7 @@ export default function Home() {
                       fill="#8884d8"
                       dataKey="value"
                     >
-                      {prChartData.map((entry, index) => (
+                      {prChartData.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
