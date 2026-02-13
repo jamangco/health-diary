@@ -29,11 +29,9 @@ jobs:
           
       - name: Install dependencies
         run: npm ci
-        working-directory: ./health-diary
         
       - name: Build
         run: npm run build
-        working-directory: ./health-diary
         
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -41,7 +39,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './health-diary/dist'
+          path: './dist'
 
   deploy:
     environment:
