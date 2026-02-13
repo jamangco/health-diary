@@ -226,7 +226,6 @@ export default function WorkoutHistory() {
             <DateDetailModal
               date={selectedDate}
               sessions={sessionsByDate[format(selectedDate, 'yyyy-MM-dd')] || []}
-              exercises={exercises}
               onClose={() => setShowDateDetailModal(false)}
               onEdit={handleEdit}
               onDelete={handleDelete}
@@ -351,14 +350,12 @@ function CalendarView({
 function DateDetailModal({
   date,
   sessions,
-  exercises,
   onClose,
   onEdit,
   onDelete,
 }: {
   date: Date;
   sessions: WorkoutSession[];
-  exercises: Exercise[];
   onClose: () => void;
   onEdit: (session: WorkoutSession, e: React.MouseEvent) => void;
   onDelete: (id: string) => void;

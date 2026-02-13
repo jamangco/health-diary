@@ -54,52 +54,6 @@ export default function StartWorkout() {
     }
   }, [currentWorkout, navigate]);
 
-  const handleFinishWorkout = () => {
-    if (!currentWorkout) return;
-    
-    if (currentWorkout.exercises.length === 0) {
-      alert('운동을 추가해주세요.');
-      return;
-    }
-
-    // selectedBodyPart는 메타데이터이므로 제거
-    const { selectedBodyPart, ...workoutData } = currentWorkout as any;
-    
-    // 기존 운동 기록 수정 모드인지 확인
-    if (currentWorkout.id) {
-      // 수정 모드: 기존 기록 업데이트
-      updateWorkoutSession(currentWorkout.id, {
-        date: workoutData.date,
-        exercises: workoutData.exercises,
-        duration: workoutData.duration,
-        notes: workoutData.notes,
-      });
-      // 업데이트된 세션 정보로 currentWorkout 업데이트
-      setCurrentWorkout({
-        ...currentWorkout,
-        ...workoutData,
-      });
-    } else {
-      // 새 운동 기록 추가
-      addWorkoutSession(workoutData);
-      // 새로 생성된 세션 ID를 가져와서 currentWorkout 업데이트
-      // addWorkoutSession은 동기적으로 실행되므로, workoutSessions가 업데이트됨
-      // 하지만 ID를 알 수 없으므로, 날짜와 시간으로 가장 최근 세션 찾기
-      const newSessionDate = workoutData.date;
-      setTimeout(() => {
-        const latestSession = [...workoutSessions]
-          .filter(s => s.date === newSessionDate || 
-            Math.abs(new Date(s.date).getTime() - new Date(newSessionDate).getTime()) < 1000)
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-        if (latestSession) {
-          setCurrentWorkout(latestSession);
-        }
-      }, 100);
-    }
-    
-    alert('운동 기록이 저장되었습니다.');
-  };
-
   // currentWorkout이 없으면 아무것도 렌더링하지 않음 (리다이렉트 중)
   if (!currentWorkout) {
     return null;
