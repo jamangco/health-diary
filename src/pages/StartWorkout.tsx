@@ -3,24 +3,18 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { format, parseISO } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { Plus, X, Calendar } from 'lucide-react';
-import { WorkoutExercise, WorkoutSet, Routine, BodyPart } from '../types';
-import PRRecordModal from '../components/PRRecordModal';
+import { Plus, X } from 'lucide-react';
+import { WorkoutExercise, BodyPart } from '../types';
 import ExerciseSetModal from '../components/ExerciseSetModal';
-
-type ViewMode = 'select' | 'active';
 
 export default function StartWorkout() {
   const navigate = useNavigate();
   const {
     currentWorkout,
     setCurrentWorkout,
-    updateCurrentWorkout,
     addWorkoutSession,
     updateWorkoutSession,
     workoutSessions,
-    routines,
-    exercises,
   } = useStore();
   
   // workoutSessions 변경 시 currentWorkout 동기화
@@ -52,12 +46,6 @@ export default function StartWorkout() {
       }
     }
   }, [workoutSessions]);
-
-  const [isPRModalOpen, setIsPRModalOpen] = useState(false);
-
-  const [viewMode, setViewMode] = useState<ViewMode>(
-    currentWorkout ? 'active' : 'select'
-  );
 
   // currentWorkout이 없으면 홈으로 리다이렉트 (운동 시작 선택 화면 제거)
   useEffect(() => {
