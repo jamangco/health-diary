@@ -577,7 +577,7 @@ export default function Statistics() {
                     : null;
                   
                   // 표준 범위 계산 함수 (성별과 키 기반, 인바디 기준)
-                  const getStandardRange = (type: 'weight' | 'muscle' | 'fat', value: number, gender?: 'male' | 'female', height?: number, weight?: number) => {
+                  const getStandardRange = (type: 'weight' | 'muscle' | 'fat', _value: number, gender?: 'male' | 'female', height?: number, weight?: number) => {
                     // 인바디 기기 표시 범위 (기준값 100% 기준)
                     const weightRange = [55, 70, 85, 100, 115, 130, 145, 160, 175, 190, 205]; // 체중: 55~205%
                     const muscleRange = [70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170]; // 골격근량: 70~170%
@@ -606,8 +606,6 @@ export default function Statistics() {
                         };
                       }
                       const heightM = height / 100;
-                      const bmiMin = 18.5;
-                      const bmiMax = 24.9;
                       const bmiStandard = 21.7; // 표준 BMI 중간값
                       const baseValue = bmiStandard * heightM * heightM;
                       return { 
@@ -726,8 +724,6 @@ export default function Statistics() {
                     if (!value) return null;
                     
                     const range = getStandardRange(type, value, record.gender, record.height, record.weight);
-                    const minPercent = range.range[0];
-                    const maxPercent = range.range[range.range.length - 1];
                     const markers = range.range;
                     
                     // 기준값 대비 측정값 퍼센트 계산 (인바디 기준)

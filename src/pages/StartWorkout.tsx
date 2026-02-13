@@ -125,7 +125,7 @@ function ActiveWorkoutView({
   onFinish: () => void;
   onCancel: () => void;
 }) {
-  const { currentWorkout, updateCurrentWorkout, addWorkoutSession, updateWorkoutSession, exercises, workoutSessions } = useStore();
+  const { currentWorkout, updateCurrentWorkout, addWorkoutSession, updateWorkoutSession, exercises } = useStore();
   const [selectedExerciseId, setSelectedExerciseId] = useState<string>('');
   const [selectedBodyPartForAdd, setSelectedBodyPartForAdd] = useState<BodyPart | 'all'>('all');
   const [isEditingDate, setIsEditingDate] = useState(false);
@@ -163,27 +163,6 @@ function ActiveWorkoutView({
   const filteredExercises = selectedBodyPartForAdd === 'all' 
     ? exercises 
     : exercises.filter((ex) => ex.bodyPart === selectedBodyPartForAdd);
-
-  const handleAddExercise = () => {
-    if (!selectedExerciseId) return;
-
-    const exercise = filteredExercises.find((e) => e.id === selectedExerciseId);
-    if (!exercise) return;
-
-    const newExercise: WorkoutExercise = {
-      id: Date.now().toString() + Math.random(),
-      exerciseId: exercise.id,
-      exerciseName: exercise.name,
-      sets: [],
-      notes: '',
-    };
-
-    updateCurrentWorkout({
-      exercises: [...currentWorkout.exercises, newExercise],
-    });
-
-    setSelectedExerciseId('');
-  };
 
   const handleRemoveExercise = (exerciseId: string) => {
     updateCurrentWorkout({

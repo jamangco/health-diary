@@ -19,7 +19,7 @@ function getBodyPartsForSession(session: WorkoutSession, exercises: Exercise[]):
 
 export default function WorkoutHistory() {
   const navigate = useNavigate();
-  const { workoutSessions, deleteWorkoutSession, exercises, setCurrentWorkout, currentWorkout, updateCurrentWorkout } = useStore();
+  const { workoutSessions, deleteWorkoutSession, exercises, setCurrentWorkout, currentWorkout, updateCurrentWorkout, updateWorkoutSession } = useStore();
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('calendar');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedSession, setSelectedSession] = useState<WorkoutSession | null>(null);
@@ -220,7 +220,6 @@ export default function WorkoutHistory() {
               }
             }}
             sessionsByDate={sessionsByDate}
-            onSessionSelect={handleViewSession}
             exercises={exercises}
           />
           {showDateDetailModal && (
@@ -243,13 +242,11 @@ function CalendarView({
   selectedDate,
   onDateSelect,
   sessionsByDate,
-  onSessionSelect,
   exercises,
 }: {
   selectedDate: Date;
   onDateSelect: (date: Date) => void;
   sessionsByDate: Record<string, WorkoutSession[]>;
-  onSessionSelect: (session: WorkoutSession) => void;
   exercises: Exercise[];
 }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
