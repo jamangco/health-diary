@@ -107,7 +107,6 @@ export default function StartWorkout() {
 
   return (
     <ActiveWorkoutView
-      onFinish={handleFinishWorkout}
       onCancel={() => {
         if (confirm('운동을 종료하시겠습니까? 기록되지 않은 내용은 저장되지 않습니다.')) {
           setCurrentWorkout(null);
@@ -119,10 +118,8 @@ export default function StartWorkout() {
 }
 
 function ActiveWorkoutView({
-  onFinish,
   onCancel,
 }: {
-  onFinish: () => void;
   onCancel: () => void;
 }) {
   const { currentWorkout, updateCurrentWorkout, addWorkoutSession, updateWorkoutSession, exercises } = useStore();

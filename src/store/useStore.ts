@@ -56,6 +56,9 @@ interface AppState {
   
   // 중복 인바디 기록 정리 (같은 날짜의 기록 중 가장 최근 것만 유지)
   cleanupDuplicateInbodyRecords: () => void;
+  
+  // PR 체크 헬퍼 함수
+  checkAndUpdatePRs: (session: WorkoutSession) => void;
 }
 
 const STORAGE_KEY = 'health-diary-storage';

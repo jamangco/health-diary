@@ -404,7 +404,6 @@ function DateDetailModal({
             {Object.entries(exercisesByType).map(([exerciseName, exerciseData]) => {
               // 해당 종목이 포함된 세션 찾기
               const firstSession = exerciseData[0].session;
-              const exerciseInfo = exercises.find((e) => e.name === exerciseName);
               
               return (
                 <div
@@ -446,7 +445,7 @@ function DateDetailModal({
                           </div>
                         )}
                         <div className="space-y-1">
-                          {exercise.sets.map((set, setIndex) => (
+                          {exercise.sets.map((set: any, setIndex: number) => (
                             <div
                               key={set.id}
                               className="flex justify-between items-center text-sm"
