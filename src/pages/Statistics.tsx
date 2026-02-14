@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
+import type { BodyPart } from '../types';
 import { format, parseISO, startOfWeek, endOfWeek, isWithinInterval, subWeeks } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { BarChart3, TrendingUp, Award, Activity } from 'lucide-react';
@@ -22,22 +23,28 @@ import {
 type GraphType = 'weekly' | 'pr' | 'maxWeight' | 'volume' | 'inbody';
 
 export default function Statistics() {
-  const { workoutSessions, personalRecords, inbodyRecords, cleanupDuplicateInbodyRecords } = useStore();
+  const { workoutSessions, personalRecords, inbodyRecords, cleanupDuplicateInbodyRecords, exercises } = useStore();
 
   const [selectedGraph, setSelectedGraph] = useState<GraphType>('weekly');
   const [selectedVolumeExercise, setSelectedVolumeExercise] = useState<'all' | string>('all');
   const [selectedMaxExercise, setSelectedMaxExercise] = useState<string>('');
+  const [selectedMaxBodyPart, setSelectedMaxBodyPart] = useState<BodyPart | 'all'>('all');
   const [selectedPRExercise, setSelectedPRExercise] = useState<'all' | string>('all');
-  const [selectedWeeklyPeriod, setSelectedWeeklyPeriod] = useState<number>(8);
   const [selectedInbodyMetric, setSelectedInbodyMetric] = useState<'체중' | '근육량' | '체지방량' | '점수'>('체중');
   const [selectedInbodyDate, setSelectedInbodyDate] = useState<string>('');
   const [isInbodyGraphExpanded, setIsInbodyGraphExpanded] = useState<boolean>(true);
   const [isInbodyListExpanded, setIsInbodyListExpanded] = useState<boolean>(false);
+  const weeklyChartScrollRef = useRef<HTMLDivElement>(null);
+  const prChartScrollRef = useRef<HTMLDivElement>(null);
+  const maxWeightChartScrollRef = useRef<HTMLDivElement>(null);
+  const volumeChartScrollRef = useRef<HTMLDivElement>(null);
+  const inbodyChartScrollRef = useRef<HTMLDivElement>(null);
 
-  // 주간 운동 횟수 (필터링 가능)
-  const weeklyWorkouts = Array.from({ length: selectedWeeklyPeriod }, (_, i) => {
-    const weekStart = startOfWeek(subWeeks(new Date(), selectedWeeklyPeriod - 1 - i), { locale: ko });
-    const weekEnd = endOfWeek(subWeeks(new Date(), selectedWeeklyPeriod - 1 - i), { locale: ko });
+  // 주간 운동 횟수: 오늘 기준 최근 4주 (왼쪽=과거, 오른쪽=최근)
+  const weeklyPeriodWeeks = 4;
+  const weeklyWorkouts = Array.from({ length: weeklyPeriodWeeks }, (_, i) => {
+    const weekStart = startOfWeek(subWeeks(new Date(), weeklyPeriodWeeks - 1 - i), { locale: ko });
+    const weekEnd = endOfWeek(subWeeks(new Date(), weeklyPeriodWeeks - 1 - i), { locale: ko });
     const uniqueDays = new Set(
       workoutSessions
         .filter((session) => {
@@ -83,9 +90,21 @@ export default function Statistics() {
   // 최고 중량 변화
   const { histories: maxWeightHistories, defaultExercise } = getMaxWeightHistories(workoutSessions);
   const maxWeightExerciseNames = Object.keys(maxWeightHistories);
-  
-  // selectedMaxExercise가 비어있으면 기본 운동으로 설정
-  const effectiveMaxExercise = selectedMaxExercise || defaultExercise || maxWeightExerciseNames[0] || '';
+  const bodyParts: (BodyPart | 'all')[] = ['all', '가슴', '등', '어깨', '하체', '팔', '복근', '전신', '기타'];
+  const exerciseNameToBodyPart = (name: string): BodyPart | undefined =>
+    exercises.find((e) => e.name === name)?.bodyPart;
+  const maxWeightExerciseNamesFiltered =
+    selectedMaxBodyPart === 'all'
+      ? maxWeightExerciseNames
+      : maxWeightExerciseNames.filter((name) => exerciseNameToBodyPart(name) === selectedMaxBodyPart);
+
+  // selectedMaxExercise가 비어있거나 필터에 없으면 기본값으로 설정
+  const effectiveMaxExercise =
+    selectedMaxExercise && maxWeightExerciseNamesFiltered.includes(selectedMaxExercise)
+      ? selectedMaxExercise
+      : maxWeightExerciseNamesFiltered.includes(defaultExercise)
+        ? defaultExercise
+        : maxWeightExerciseNamesFiltered[0] || '';
   const maxWeightHistory = effectiveMaxExercise
     ? maxWeightHistories[effectiveMaxExercise] || []
     : [];
@@ -97,6 +116,30 @@ export default function Statistics() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveMaxExercise]);
+
+  // 운동부위 필터 변경 시, 현재 선택 운동이 필터 결과에 없으면 선택 초기화
+  useEffect(() => {
+    if (selectedMaxExercise && !maxWeightExerciseNamesFiltered.includes(selectedMaxExercise)) {
+      setSelectedMaxExercise('');
+    }
+  }, [selectedMaxBodyPart, maxWeightExerciseNamesFiltered.join(',')]);
+
+  // 그래프 스크롤을 오른쪽(최근)으로 초기화
+  useEffect(() => {
+    const scrollToRight = (ref: React.RefObject<HTMLDivElement | null>) => {
+      if (ref?.current) {
+        const el = ref.current;
+        requestAnimationFrame(() => {
+          el.scrollLeft = el.scrollWidth - el.clientWidth;
+        });
+      }
+    };
+    if (selectedGraph === 'weekly') scrollToRight(weeklyChartScrollRef);
+    if (selectedGraph === 'pr') scrollToRight(prChartScrollRef);
+    if (selectedGraph === 'maxWeight') scrollToRight(maxWeightChartScrollRef);
+    if (selectedGraph === 'volume') scrollToRight(volumeChartScrollRef);
+    if (selectedGraph === 'inbody') scrollToRight(inbodyChartScrollRef);
+  }, [selectedGraph, weeklyWorkouts.length, allPRGraphData.length, maxWeightHistory.length, volumeChartData.length, inbodyRecords.length]);
 
   // 중복 인바디 기록 정리 (컴포넌트 마운트 시 한 번만 실행)
   useEffect(() => {
@@ -173,41 +216,46 @@ export default function Statistics() {
       {/* 주간 운동 횟수 */}
       {selectedGraph === 'weekly' && (
       <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-5 shadow-lg border border-gray-200 dark:border-gray-700 mx-auto max-w-4xl">
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-xl">
               <Activity size={20} className="text-blue-600 dark:text-blue-400" />
             </div>
             주간 운동 횟수
           </h2>
-          <select
-            value={selectedWeeklyPeriod}
-            onChange={(e) => setSelectedWeeklyPeriod(Number(e.target.value))}
-            className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium mr-[30px] text-center"
-          >
-            <option value={4}>최근 4주</option>
-            <option value={8}>최근 8주</option>
-            <option value={12}>최근 12주</option>
-            <option value={16}>최근 16주</option>
-            <option value={24}>최근 24주</option>
-          </select>
         </div>
-        <ResponsiveContainer width="100%" height={400}>
-          <BarChart 
-            data={weeklyWorkouts} 
-            margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
-            barCategoryGap="20%"
-            barGap={20}
+        <div
+          ref={weeklyChartScrollRef}
+          className="overflow-x-auto overflow-y-hidden"
+          style={{ width: '100%', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+        >
+          <div
+            style={{
+              minWidth: Math.max(800, 72 * weeklyWorkouts.length),
+              height: 400,
+            }}
           >
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="week" />
-            <YAxis domain={[0, 7]} />
-            <Tooltip />
-            <Bar dataKey="count" fill="#3b82f6" radius={[8, 8, 0, 0]} maxBarSize={126}>
-              <LabelList dataKey="count" position="top" />
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={400}>
+              <BarChart 
+                data={weeklyWorkouts} 
+                margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+                barCategoryGap="20%"
+                barGap={20}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="week" />
+                <YAxis domain={[0, 7]} />
+                <Tooltip />
+                <Bar dataKey="count" fill="#3b82f6" radius={[8, 8, 0, 0]} maxBarSize={126}>
+                  <LabelList dataKey="count" position="top" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+          왼쪽 스크롤: 과거 · 오른쪽 스크롤: 최근
+        </p>
       </div>
       )}
 
@@ -237,47 +285,58 @@ export default function Statistics() {
             )}
           </div>
           {allPRGraphData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={400}>
-              <BarChart 
-                data={prGraphData} 
-                margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
-                barCategoryGap="20%"
-                barGap={20}
+            <>
+              <div
+                ref={prChartScrollRef}
+                className="overflow-x-auto overflow-y-hidden"
+                style={{ width: '100%', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
               >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                {isPRAll
-                  ? bigThreeExercises.map((exerciseName, index) => {
-                      const hasData = allPRGraphData.some((d) => d[exerciseName] > 0);
-                      if (!hasData) return null;
-                      const colors = ['#60a5fa', '#a855f7', '#86efac']; // 파란색, 보라색, 연녹색
-                      return (
-                        <Bar
-                          key={exerciseName}
-                          dataKey={exerciseName}
-                          fill={colors[index]}
-                          radius={[8, 8, 0, 0]}
-                          maxBarSize={126}
-                        >
-                          <LabelList dataKey={exerciseName} position="top" />
-                        </Bar>
-                      );
-                    })
-                  : (
-                    <Bar
-                      dataKey={selectedPRExercise}
-                      fill="#60a5fa"
-                      radius={[8, 8, 0, 0]}
-                      maxBarSize={126}
+                <div style={{ minWidth: Math.max(800, 72 * prGraphData.length), height: 400 }}>
+                  <ResponsiveContainer width="100%" height={400}>
+                    <BarChart 
+                      data={prGraphData} 
+                      margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+                      barCategoryGap="20%"
+                      barGap={20}
                     >
-                      <LabelList dataKey={selectedPRExercise} position="top" />
-                    </Bar>
-                  )}
-              </BarChart>
-            </ResponsiveContainer>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      {isPRAll
+                        ? bigThreeExercises.map((exerciseName, index) => {
+                            const hasData = allPRGraphData.some((d) => d[exerciseName] > 0);
+                            if (!hasData) return null;
+                            const colors = ['#60a5fa', '#a855f7', '#86efac'];
+                            return (
+                              <Bar
+                                key={exerciseName}
+                                dataKey={exerciseName}
+                                fill={colors[index]}
+                                radius={[8, 8, 0, 0]}
+                                maxBarSize={126}
+                              >
+                                <LabelList dataKey={exerciseName} position="top" />
+                              </Bar>
+                            );
+                          })
+                        : (
+                          <Bar
+                            dataKey={selectedPRExercise}
+                            fill="#60a5fa"
+                            radius={[8, 8, 0, 0]}
+                            maxBarSize={126}
+                          >
+                            <LabelList dataKey={selectedPRExercise} position="top" />
+                          </Bar>
+                        )}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">왼쪽 스크롤: 과거 · 오른쪽 스크롤: 최근</p>
+            </>
           ) : (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
               <Award size={48} className="mx-auto mb-4 opacity-50" />
@@ -298,55 +357,82 @@ export default function Statistics() {
               중량 변화
             </h2>
             {maxWeightHistory.length > 0 && maxWeightExerciseNames.length > 0 && (
-              <select
-                value={selectedMaxExercise}
-                onChange={(e) => setSelectedMaxExercise(e.target.value)}
-                className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium mr-[30px] text-center"
-              >
-                {maxWeightExerciseNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-wrap items-center gap-2 mr-[30px]">
+                <select
+                  value={selectedMaxBodyPart}
+                  onChange={(e) => setSelectedMaxBodyPart(e.target.value as BodyPart | 'all')}
+                  className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium text-center"
+                >
+                  <option value="all">전체 부위</option>
+                  {bodyParts.filter((bp) => bp !== 'all').map((bp) => (
+                    <option key={bp} value={bp}>
+                      {bp}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={selectedMaxExercise || effectiveMaxExercise || (maxWeightExerciseNamesFiltered.length === 0 ? '_none' : '')}
+                  onChange={(e) => e.target.value !== '_none' && setSelectedMaxExercise(e.target.value)}
+                  className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium text-center"
+                >
+                  {maxWeightExerciseNamesFiltered.length === 0 ? (
+                    <option value="_none">해당 부위 기록 없음</option>
+                  ) : (
+                    maxWeightExerciseNamesFiltered.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
             )}
           </div>
           {maxWeightHistory.length > 0 ? (
             <>
-              <ResponsiveContainer width="100%" height={400}>
-                <ComposedChart 
-                  data={maxWeightHistory} 
-                  margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
-                  barCategoryGap="20%"
-                  barGap={20}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="maxWeight" name="최고 중량" radius={[8, 8, 0, 0]} maxBarSize={126}>
-                    <LabelList dataKey="maxWeight" position="top" />
-                    {maxWeightHistory.map((entry, index) => {
-                      const today = format(new Date(), 'MM/dd', { locale: ko });
-                      const isToday = entry.date === today;
-                      return (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={isToday ? '#F5D67D' : '#A1A7E7'}
-                        />
-                      );
-                    })}
-                  </Bar>
-                  <Line
-                    type="monotone"
-                    dataKey="maxWeight"
-                    name="최고 중량"
-                    stroke="#10b981"
-                    strokeWidth={2}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
+              <div
+                ref={maxWeightChartScrollRef}
+                className="overflow-x-auto overflow-y-hidden"
+                style={{ width: '100%', maxWidth: 380, WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+              >
+                <div style={{ minWidth: Math.max(800, 80 * maxWeightHistory.length), height: 400 }}>
+                  <ResponsiveContainer width="100%" height={400}>
+                    <ComposedChart 
+                      data={maxWeightHistory} 
+                      margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+                      barCategoryGap="20%"
+                      barGap={20}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="maxWeight" name="최고 중량" radius={[8, 8, 0, 0]} maxBarSize={126}>
+                        <LabelList dataKey="maxWeight" position="top" />
+                        {maxWeightHistory.map((entry, index) => {
+                          const today = format(new Date(), 'MM/dd', { locale: ko });
+                          const isToday = entry.date === today;
+                          return (
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={isToday ? '#F5D67D' : '#A1A7E7'}
+                            />
+                          );
+                        })}
+                      </Bar>
+                      <Line
+                        type="monotone"
+                        dataKey="maxWeight"
+                        name="최고 중량"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">왼쪽 스크롤: 과거 · 오른쪽 스크롤: 최근 (기본: 오늘 기준 약 4개)</p>
             </>
           ) : (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
@@ -382,38 +468,47 @@ export default function Statistics() {
               </select>
             )}
           </div>
-          <ResponsiveContainer width="100%" height={400}>
-            <LineChart data={volumeChartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="week" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              {isVolumeAll
-                ? volumeExerciseNames.map((exerciseName, index) => (
-                    <Line
-                      key={exerciseName}
-                      type="monotone"
-                      dataKey={exerciseName}
-                      stroke={`hsl(${(index * 60) % 360}, 70%, 50%)`}
-                      strokeWidth={2}
-                    >
-                      <LabelList dataKey={exerciseName} position="top" />
-                    </Line>
-                  ))
-                : (
-                  <Line
-                    type="monotone"
-                    dataKey="volume"
-                    name={selectedVolumeExercise || '볼륨'}
-                    stroke="#3b82f6"
-                    strokeWidth={2}
-                  >
-                    <LabelList dataKey="volume" position="top" />
-                  </Line>
-                )}
-            </LineChart>
-          </ResponsiveContainer>
+          <div
+            ref={volumeChartScrollRef}
+            className="overflow-x-auto overflow-y-hidden"
+            style={{ width: '100%', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+          >
+            <div style={{ minWidth: Math.max(800, 72 * volumeChartData.length), height: 400 }}>
+              <ResponsiveContainer width="100%" height={400}>
+                <LineChart data={volumeChartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="week" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  {isVolumeAll
+                    ? volumeExerciseNames.map((exerciseName, index) => (
+                        <Line
+                          key={exerciseName}
+                          type="monotone"
+                          dataKey={exerciseName}
+                          stroke={`hsl(${(index * 60) % 360}, 70%, 50%)`}
+                          strokeWidth={2}
+                        >
+                          <LabelList dataKey={exerciseName} position="top" />
+                        </Line>
+                      ))
+                    : (
+                      <Line
+                        type="monotone"
+                        dataKey="volume"
+                        name={selectedVolumeExercise || '볼륨'}
+                        stroke="#3b82f6"
+                        strokeWidth={2}
+                      >
+                        <LabelList dataKey="volume" position="top" />
+                      </Line>
+                    )}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">왼쪽 스크롤: 과거 주차 · 오른쪽 스크롤: 최근 주차</p>
         </div>
       )}
 
@@ -449,75 +544,86 @@ export default function Statistics() {
           {isInbodyGraphExpanded && (
             <>
               {inbodyRecords.length > 0 ? (
-                <ResponsiveContainer width="100%" height={400}>
-                  <LineChart
-                    data={inbodyRecords
-                      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                      .map((record) => {
-                        const inbodyScore = record.notes?.includes('인바디점수:') 
-                          ? parseFloat(record.notes.split('인바디점수:')[1]?.split(',')[0]?.trim() || '0')
-                          : null;
-                        return {
-                          date: format(parseISO(record.date), 'MM/dd', { locale: ko }),
-                          체중: record.weight || 0,
-                          근육량: record.muscleMass || 0,
-                          체지방량: record.bodyFat || 0,
-                          점수: inbodyScore || 0,
-                        };
-                      })}
-                    margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+                <>
+                  <div
+                    ref={inbodyChartScrollRef}
+                    className="overflow-x-auto overflow-y-hidden"
+                    style={{ width: '100%', maxWidth: 380, WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend align="center" />
-                    {selectedInbodyMetric === '체중' && (
-                      <Line
-                        type="monotone"
-                        dataKey="체중"
-                        name="체중"
-                        stroke="#3b82f6"
-                        strokeWidth={2}
-                      >
-                        <LabelList dataKey="체중" position="top" />
-                      </Line>
-                    )}
-                    {selectedInbodyMetric === '근육량' && (
-                      <Line
-                        type="monotone"
-                        dataKey="근육량"
-                        name="근육량"
-                        stroke="#10b981"
-                        strokeWidth={2}
-                      >
-                        <LabelList dataKey="근육량" position="top" />
-                      </Line>
-                    )}
-                    {selectedInbodyMetric === '체지방량' && (
-                      <Line
-                        type="monotone"
-                        dataKey="체지방량"
-                        name="체지방량"
-                        stroke="#ef4444"
-                        strokeWidth={2}
-                      >
-                        <LabelList dataKey="체지방량" position="top" />
-                      </Line>
-                    )}
-                    {selectedInbodyMetric === '점수' && (
-                      <Line
-                        type="monotone"
-                        dataKey="점수"
-                        name="점수"
-                        stroke="#a855f7"
-                        strokeWidth={2}
-                      >
-                        <LabelList dataKey="점수" position="top" />
-                      </Line>
-                    )}
-                  </LineChart>
-                </ResponsiveContainer>
+                    <div style={{ minWidth: Math.max(800, 80 * inbodyRecords.length), height: 400 }}>
+                      <ResponsiveContainer width="100%" height={400}>
+                        <LineChart
+                          data={inbodyRecords
+                            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                            .map((record) => {
+                              const inbodyScore = record.notes?.includes('인바디점수:') 
+                                ? parseFloat(record.notes.split('인바디점수:')[1]?.split(',')[0]?.trim() || '0')
+                                : null;
+                              return {
+                                date: format(parseISO(record.date), 'MM/dd', { locale: ko }),
+                                체중: record.weight || 0,
+                                근육량: record.muscleMass || 0,
+                                체지방량: record.bodyFat || 0,
+                                점수: inbodyScore || 0,
+                              };
+                            })}
+                          margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend align="center" />
+                          {selectedInbodyMetric === '체중' && (
+                            <Line
+                              type="monotone"
+                              dataKey="체중"
+                              name="체중"
+                              stroke="#3b82f6"
+                              strokeWidth={2}
+                            >
+                              <LabelList dataKey="체중" position="top" />
+                            </Line>
+                          )}
+                          {selectedInbodyMetric === '근육량' && (
+                            <Line
+                              type="monotone"
+                              dataKey="근육량"
+                              name="근육량"
+                              stroke="#10b981"
+                              strokeWidth={2}
+                            >
+                              <LabelList dataKey="근육량" position="top" />
+                            </Line>
+                          )}
+                          {selectedInbodyMetric === '체지방량' && (
+                            <Line
+                              type="monotone"
+                              dataKey="체지방량"
+                              name="체지방량"
+                              stroke="#ef4444"
+                              strokeWidth={2}
+                            >
+                              <LabelList dataKey="체지방량" position="top" />
+                            </Line>
+                          )}
+                          {selectedInbodyMetric === '점수' && (
+                            <Line
+                              type="monotone"
+                              dataKey="점수"
+                              name="점수"
+                              stroke="#a855f7"
+                              strokeWidth={2}
+                            >
+                              <LabelList dataKey="점수" position="top" />
+                            </Line>
+                          )}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">왼쪽 스크롤: 과거 · 오른쪽 스크롤: 최근 (기본: 오늘 기준 약 4개)</p>
+                </>
               ) : (
                 <div className="text-center py-12 text-gray-500 dark:text-gray-400">
                   <Activity size={48} className="mx-auto mb-4 opacity-50" />

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { X } from 'lucide-react';
+import { X, Check, Minus, Plus } from 'lucide-react';
 import { WorkoutSet } from '../types';
 
 interface ExerciseSetModalProps {
@@ -22,27 +22,27 @@ export default function ExerciseSetModal({
 }: ExerciseSetModalProps) {
   const { workoutSessions } = useStore();
   const [sets, setSets] = useState<WorkoutSet[]>([]);
+  const [setCount, setSetCount] = useState(4);
 
   // 모달이 열릴 때 기존 세트 불러오기 또는 이전 기록 불러오기
   useEffect(() => {
     if (isOpen) {
-      // 기존 세트가 있으면 사용, 없으면 이전 기록에서 불러오기
       if (existingSets && existingSets.length > 0) {
         setSets(existingSets);
+        setSetCount(existingSets.length);
       } else {
-        // 이전 기록에서 불러오기
         const previousSets = loadPreviousSets(exerciseId);
         if (previousSets && previousSets.length > 0) {
           setSets(previousSets);
+          setSetCount(previousSets.length);
         } else {
-          // 이전 기록도 없으면 기본 1세트 추가
-          setSets([
-            {
-              id: Date.now().toString() + Math.random(),
-              reps: 10,
-              weight: 0,
-            },
-          ]);
+          const defaultSets = Array.from({ length: 4 }, (_, i) => ({
+            id: Date.now().toString() + Math.random() + i,
+            reps: 10,
+            weight: 0,
+          }));
+          setSets(defaultSets);
+          setSetCount(4);
         }
       }
     }
@@ -54,16 +54,9 @@ export default function ExerciseSetModal({
       .find((session) =>
         session.exercises.some((ex) => ex.exerciseId === baseExerciseId)
       );
-
-    if (!recent) {
-      return null;
-    }
-
+    if (!recent) return null;
     const prevEx = recent.exercises.find((ex) => ex.exerciseId === baseExerciseId);
-    if (!prevEx || prevEx.sets.length === 0) {
-      return null;
-    }
-
+    if (!prevEx || prevEx.sets.length === 0) return null;
     return prevEx.sets.map((s) => ({
       id: Date.now().toString() + Math.random(),
       reps: s.reps,
@@ -73,16 +66,35 @@ export default function ExerciseSetModal({
     }));
   };
 
-  const handleAddSet = () => {
-    const lastSet = sets.length > 0 ? sets[sets.length - 1] : null;
-    const newSet: WorkoutSet = {
-      id: Date.now().toString() + Math.random(),
-      reps: lastSet?.reps || 10,
-      weight: lastSet?.weight || 0,
-      restTime: lastSet?.restTime,
-      notes: lastSet?.notes,
-    };
-    setSets([...sets, newSet]);
+  const totalVolume = sets.reduce(
+    (sum, set) => sum + (set.weight || 0) * (set.reps || 0),
+    0
+  );
+
+  const previousVolume = (() => {
+    const prev = loadPreviousSets(exerciseId);
+    if (!prev || prev.length === 0) return 0;
+    return prev.reduce((s, set) => s + (set.weight || 0) * (set.reps || 0), 0);
+  })();
+  const volumeDiff = totalVolume - previousVolume;
+
+  const changeSetCount = (delta: number) => {
+    const next = Math.max(1, Math.min(20, setCount + delta));
+    setSetCount(next);
+    if (next > sets.length) {
+      const lastSet = sets[sets.length - 1];
+      const newSets = [...sets];
+      for (let i = sets.length; i < next; i++) {
+        newSets.push({
+          id: Date.now().toString() + Math.random() + i,
+          reps: lastSet?.reps ?? 10,
+          weight: lastSet?.weight ?? 0,
+        });
+      }
+      setSets(newSets);
+    } else if (next < sets.length) {
+      setSets(sets.slice(0, next));
+    }
   };
 
   const handleUpdateSet = (setId: string, updates: Partial<WorkoutSet>) => {
@@ -92,15 +104,18 @@ export default function ExerciseSetModal({
   };
 
   const handleRemoveSet = (setId: string) => {
-    setSets(sets.filter((set) => set.id !== setId));
+    const next = sets.filter((set) => set.id !== setId);
+    setSets(next);
+    setSetCount(next.length);
   };
 
   const handleSave = () => {
-    if (sets.length === 0) {
-      alert('최소 1개 이상의 세트를 추가해주세요.');
+    const validSets = sets.filter((s) => (s.weight ?? 0) > 0 || (s.reps ?? 0) > 0);
+    if (validSets.length === 0) {
+      alert('최소 1개 이상의 세트를 입력해주세요.');
       return;
     }
-    onSave(sets);
+    onSave(validSets);
     onClose();
   };
 
@@ -108,95 +123,122 @@ export default function ExerciseSetModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto"
+        className="w-full sm:max-w-lg bg-white dark:bg-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-3xl">
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-            {exerciseName}
-          </h3>
+        {/* Header: name + volume (가운데 정렬) */}
+        <div className="px-5 pt-5 pb-3 flex items-center justify-center relative">
+          <div className="text-center">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+              {exerciseName}
+            </h2>
+            <p className="text-sm font-medium text-green-600 dark:text-green-400 mt-0.5">
+              총 볼륨: {totalVolume.toLocaleString()}kg
+              {volumeDiff !== 0 && previousVolume > 0 && (
+                <span className="ml-1">
+                  ({volumeDiff > 0 ? '+' : ''}{volumeDiff.toLocaleString()})
+                </span>
+              )}
+            </p>
+          </div>
           <button
             onClick={onClose}
-            className="p-2 text-gray-600 dark:text-gray-400 active:text-gray-900 dark:active:text-white active:bg-gray-100 dark:active:bg-gray-700 rounded-xl transition-colors"
+            className="absolute right-5 top-5 p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
+            aria-label="닫기"
           >
-            <X size={24} />
+            <X size={22} />
           </button>
         </div>
-        <div className="p-6">
-          <div className="space-y-3 mb-4">
-            {sets.map((set, index) => (
-              <div
-                key={set.id}
-                className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-700 rounded-xl"
+
+        {/* Set count selector (우측 정렬) */}
+        <div className="px-5 pb-4 flex items-center justify-end">
+          <div className="flex items-center rounded-xl bg-gray-100 dark:bg-gray-700 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => changeSetCount(-1)}
+              className="p-2.5 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
+            >
+              <Minus size={18} />
+            </button>
+            <span className="w-12 text-center text-base font-semibold text-gray-900 dark:text-white bg-gray-200/50 dark:bg-gray-600/50 py-2.5">
+              {setCount}
+            </span>
+            <button
+              type="button"
+              onClick={() => changeSetCount(1)}
+              className="p-2.5 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
+            >
+              <Plus size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Set list (팝업 너비에 맞춤, 가운데 정렬) */}
+        <div className="px-5 space-y-2 pb-4 flex flex-col items-center w-full">
+          {sets.slice(0, setCount).map((set, index) => (
+            <div
+              key={set.id}
+              className="flex items-center justify-center gap-4 py-4 px-4 border-b border-gray-100 dark:border-gray-700 last:border-0 w-full rounded-xl bg-gray-50/50 dark:bg-gray-700/30"
+            >
+              <span className="text-base font-bold text-blue-500 w-8 text-center">
+                {index + 1}
+              </span>
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                value={set.weight || ''}
+                onChange={(e) =>
+                  handleUpdateSet(set.id, {
+                    weight: parseFloat(e.target.value) || 0,
+                  })
+                }
+                placeholder="0"
+                className="w-24 px-4 py-2.5 text-center border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-base"
+              />
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                kg
+              </span>
+              <input
+                type="number"
+                min={0}
+                value={set.reps || ''}
+                onChange={(e) =>
+                  handleUpdateSet(set.id, {
+                    reps: parseInt(e.target.value) || 0,
+                  })
+                }
+                placeholder="0"
+                className="w-20 px-4 py-2.5 text-center border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-base"
+              />
+              <span className="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0">
+                회
+              </span>
+              <button
+                type="button"
+                onClick={() => handleRemoveSet(set.id)}
+                className="p-2 text-gray-400 hover:text-red-500 ml-auto"
+                aria-label="세트 삭제"
               >
-                <span className="text-sm font-medium text-gray-600 dark:text-gray-400 w-16">
-                  세트 {index + 1}
-                </span>
-                <input
-                  type="number"
-                  value={set.weight || ''}
-                  onChange={(e) =>
-                    handleUpdateSet(set.id, {
-                      weight: parseFloat(e.target.value) || 0,
-                    })
-                  }
-                  placeholder="중량"
-                  className="w-[30%] px-4 py-2.5 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                />
-                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  kg
-                </span>
-                <span className="text-gray-400 dark:text-gray-500">×</span>
-                <input
-                  type="number"
-                  value={set.reps || ''}
-                  onChange={(e) =>
-                    handleUpdateSet(set.id, {
-                      reps: parseInt(e.target.value) || 0,
-                    })
-                  }
-                  placeholder="반복"
-                  className="w-[30%] px-4 py-2.5 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                />
-                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  회
-                </span>
-                <button
-                  onClick={() => handleRemoveSet(set.id)}
-                  className="text-red-500 active:text-red-700 p-1.5 active:bg-red-50 dark:active:bg-red-900/20 rounded-lg transition-colors"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-            ))}
-          </div>
+                <X size={18} />
+              </button>
+            </div>
+          ))}
+        </div>
 
+        {/* 세트 완료 버튼 (팝업 너비에 맞춤) */}
+        <div className="p-5 pt-2 pb-6 sm:pb-5">
           <button
-            onClick={handleAddSet}
-            className="w-full py-3 mb-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl text-gray-600 dark:text-gray-400 active:border-blue-500 active:text-blue-500 active:bg-blue-50 dark:active:bg-blue-900/20 transition-all flex items-center justify-center gap-2 font-medium"
+            onClick={handleSave}
+            className="w-full py-4 rounded-2xl bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-semibold flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30 transition-colors"
           >
-            <span className="text-xl">+</span>
-            세트 추가
+            <Check size={22} strokeWidth={2.5} />
+            세트 완료
           </button>
-
-          <div className="flex gap-3">
-            <button
-              onClick={onClose}
-              className="flex-1 px-5 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 active:bg-gray-50 dark:active:bg-gray-700 font-semibold transition-all active:scale-95"
-            >
-              취소
-            </button>
-            <button
-              onClick={handleSave}
-              className="flex-1 px-5 py-3 text-base bg-gradient-to-r from-blue-500 to-blue-600 active:from-blue-600 active:to-blue-700 text-white rounded-xl font-semibold transition-all active:scale-95 shadow-lg shadow-blue-500/30"
-            >
-              저장
-            </button>
-          </div>
         </div>
       </div>
     </div>
