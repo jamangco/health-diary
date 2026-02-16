@@ -74,7 +74,7 @@ function ActiveWorkoutView({
 }: {
   onCancel: () => void;
 }) {
-  const { currentWorkout, updateCurrentWorkout, addWorkoutSession, updateWorkoutSession, exercises } = useStore();
+  const { currentWorkout, setCurrentWorkout, updateCurrentWorkout, addWorkoutSession, updateWorkoutSession, workoutSessions, exercises } = useStore();
   const [selectedExerciseId, setSelectedExerciseId] = useState<string>('');
   const [selectedBodyPartForAdd, setSelectedBodyPartForAdd] = useState<BodyPart | 'all'>('all');
   const [isEditingDate, setIsEditingDate] = useState(false);
@@ -95,17 +95,33 @@ function ActiveWorkoutView({
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newDateStr = e.target.value;
     setEditedDate(newDateStr);
-    
-    // 날짜와 시간을 합쳐서 ISO 문자열로 변환
+
+    // 선택한 날짜의 기존 운동 기록 찾기
+    const sessionsForDate = workoutSessions.filter((s) => {
+      const sessionDateStr = s.date.split('T')[0];
+      return sessionDateStr === newDateStr;
+    });
+
     const selectedDate = new Date(newDateStr);
     const currentDate = parseISO(currentWorkout.date);
     selectedDate.setHours(currentDate.getHours());
     selectedDate.setMinutes(currentDate.getMinutes());
     selectedDate.setSeconds(currentDate.getSeconds());
-    
-    updateCurrentWorkout({
-      date: selectedDate.toISOString(),
-    });
+    const newDateISO = selectedDate.toISOString();
+
+    if (sessionsForDate.length > 0) {
+      // 해당 날짜에 기록이 있으면 가장 최근 세션 불러오기
+      const latestSession = sessionsForDate.sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      )[0];
+      setCurrentWorkout(latestSession);
+    } else {
+      // 해당 날짜에 기록이 없으면 빈 세션으로 전환
+      setCurrentWorkout({
+        date: newDateISO,
+        exercises: [],
+      });
+    }
   };
 
   // 운동 추가 시 선택한 부위에 맞는 운동만 필터링
@@ -201,9 +217,6 @@ function ActiveWorkoutView({
             <option value="어깨">어깨</option>
             <option value="하체">하체</option>
             <option value="팔">팔</option>
-            <option value="복근">복근</option>
-            <option value="전신">전신</option>
-            <option value="기타">기타</option>
           </select>
           
           {/* 운동 선택 */}

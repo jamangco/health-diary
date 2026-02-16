@@ -1,15 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import type { BodyPart } from '../types';
-import { format, parseISO, startOfWeek, endOfWeek, isWithinInterval, subWeeks } from 'date-fns';
+import { format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, subWeeks, subMonths, addWeeks, addMonths, addDays } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { BarChart3, TrendingUp, Award, Activity } from 'lucide-react';
+import { BarChart3, TrendingUp, Award, Activity, List } from 'lucide-react';
 import {
   LineChart,
   Line,
   BarChart,
   Bar,
-  ComposedChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -18,6 +17,8 @@ import {
   ResponsiveContainer,
   LabelList,
   Cell,
+  PieChart,
+  Pie,
 } from 'recharts';
 
 type GraphType = 'weekly' | 'pr' | 'maxWeight' | 'volume' | 'inbody';
@@ -26,71 +27,147 @@ export default function Statistics() {
   const { workoutSessions, personalRecords, inbodyRecords, cleanupDuplicateInbodyRecords, exercises } = useStore();
 
   const [selectedGraph, setSelectedGraph] = useState<GraphType>('weekly');
-  const [selectedVolumeExercise, setSelectedVolumeExercise] = useState<'all' | string>('all');
+  const [selectedVolumeFilter, setSelectedVolumeFilter] = useState<'all' | BodyPart>('all');
   const [selectedMaxExercise, setSelectedMaxExercise] = useState<string>('');
   const [selectedMaxBodyPart, setSelectedMaxBodyPart] = useState<BodyPart | 'all'>('all');
-  const [selectedPRExercise, setSelectedPRExercise] = useState<'all' | string>('all');
+  const [activePRCard, setActivePRCard] = useState<'record' | 'predicted'>('record');
+  const [selectedPRDate, setSelectedPRDate] = useState<string>('');
   const [selectedInbodyMetric, setSelectedInbodyMetric] = useState<'체중' | '근육량' | '체지방량' | '점수'>('체중');
   const [selectedInbodyDate, setSelectedInbodyDate] = useState<string>('');
-  const [isInbodyGraphExpanded, setIsInbodyGraphExpanded] = useState<boolean>(true);
-  const [isInbodyListExpanded, setIsInbodyListExpanded] = useState<boolean>(false);
+  const [exerciseCountPeriod, setExerciseCountPeriod] = useState<'week' | 'month'>('week');
+  const [bodyPartRatioPeriod, setBodyPartRatioPeriod] = useState<'week' | 'month' | 'total'>('total');
+  const [activeVolumeCard, setActiveVolumeCard] = useState<'volume' | 'bodyPart'>('volume');
+  const [volumePeriod, setVolumePeriod] = useState<'day' | 'week' | 'month'>('week');
+  const [maxWeightPeriod, setMaxWeightPeriod] = useState<'day' | 'week' | 'month'>('day');
+  const [activeInbodyCard, setActiveInbodyCard] = useState<'graph' | 'list'>('graph');
+  const [inbodyPeriod, setInbodyPeriod] = useState<'day' | 'week' | 'month'>('day');
   const weeklyChartScrollRef = useRef<HTMLDivElement>(null);
-  const prChartScrollRef = useRef<HTMLDivElement>(null);
   const maxWeightChartScrollRef = useRef<HTMLDivElement>(null);
   const volumeChartScrollRef = useRef<HTMLDivElement>(null);
   const inbodyChartScrollRef = useRef<HTMLDivElement>(null);
 
-  // 주간 운동 횟수: 오늘 기준 최근 4주 (왼쪽=과거, 오른쪽=최근)
-  const weeklyPeriodWeeks = 4;
-  const weeklyWorkouts = Array.from({ length: weeklyPeriodWeeks }, (_, i) => {
-    const weekStart = startOfWeek(subWeeks(new Date(), weeklyPeriodWeeks - 1 - i), { locale: ko });
-    const weekEnd = endOfWeek(subWeeks(new Date(), weeklyPeriodWeeks - 1 - i), { locale: ko });
-    const uniqueDays = new Set(
-      workoutSessions
-        .filter((session) => {
-          const sessionDate = parseISO(session.date);
-          return isWithinInterval(sessionDate, { start: weekStart, end: weekEnd });
-        })
-        .map((session) => session.date.split('T')[0])
-    );
-    const count = uniqueDays.size;
+  const FUTURE_SLOTS = 5;
+  const SLOT_WIDTH = 220;
+  const Y_AXIS_WIDTH = 50;
+
+  // 운동 횟수: 주간(최근 8주) 또는 월간(최근 6개월) + 미래 빈 슬롯
+  const exerciseCountDataRaw = exerciseCountPeriod === 'week'
+    ? Array.from({ length: 8 }, (_, i) => {
+        const weekStart = startOfWeek(subWeeks(new Date(), 7 - i), { locale: ko });
+        const weekEnd = endOfWeek(subWeeks(new Date(), 7 - i), { locale: ko });
+        const uniqueDays = new Set(
+          workoutSessions
+            .filter((session) => {
+              const sessionDate = parseISO(session.date);
+              return isWithinInterval(sessionDate, { start: weekStart, end: weekEnd });
+            })
+            .map((session) => session.date.split('T')[0])
+        );
+        return {
+          period: formatWeekLabel(weekStart),
+          count: uniqueDays.size,
+        };
+      })
+    : Array.from({ length: 6 }, (_, i) => {
+        const monthStart = startOfMonth(subMonths(new Date(), 5 - i));
+        const monthEnd = endOfMonth(subMonths(new Date(), 5 - i));
+        const uniqueDays = new Set(
+          workoutSessions
+            .filter((session) => {
+              const sessionDate = parseISO(session.date);
+              return isWithinInterval(sessionDate, { start: monthStart, end: monthEnd });
+            })
+            .map((session) => session.date.split('T')[0])
+        );
+        return {
+          period: formatMonthLabel(monthStart),
+          count: uniqueDays.size,
+        };
+      });
+  const exerciseCountData = [
+    ...exerciseCountDataRaw,
+    ...Array.from({ length: FUTURE_SLOTS }, (_, i) =>
+      exerciseCountPeriod === 'week'
+        ? { period: formatWeekLabel(addWeeks(new Date(), i + 1)), count: null as number | null }
+        : { period: formatMonthLabel(addMonths(new Date(), i + 1)), count: null as number | null }
+    ),
+  ];
+
+  // 운동별 볼륨 그래프 (일별/주별/월별)
+  const exerciseVolumesByPeriod = calculateExerciseVolumesByPeriod(workoutSessions, volumePeriod);
+  const volumeExerciseNames =
+    exerciseVolumesByPeriod.length > 0
+      ? Object.keys(exerciseVolumesByPeriod[0]).filter((key) => key !== 'periodLabel')
+      : [];
+  const volumeChartDataByBodyPart = calculateVolumeByBodyPartByPeriod(workoutSessions, exercises, ['가슴', '등', '하체', '어깨'], volumePeriod);
+  const isVolumeAll = selectedVolumeFilter === 'all';
+  const volumeChartDataCentered = getVolumeChartDataCenteredOnToday(volumePeriod);
+  const volumeRawByLabel = new Map<string, Record<string, number>>();
+  if (isVolumeAll) {
+    exerciseVolumesByPeriod.forEach((row) => {
+      const key = row.periodLabel;
+      volumeRawByLabel.set(key, { ...row } as Record<string, number>);
+    });
+  } else {
+    volumeChartDataByBodyPart.forEach((row) => {
+      volumeRawByLabel.set(row.periodLabel, { volume: row[selectedVolumeFilter] || 0 });
+    });
+  }
+  const volumePastSlots = volumePeriod === 'day' ? 7 : 4;
+  const volumeFutureStartIndex = volumePastSlots + 1;
+  const volumeChartData = volumeChartDataCentered.map((row, i) => {
+    const isFuture = i >= volumeFutureStartIndex;
+    const raw = volumeRawByLabel.get(row.periodLabel);
+    if (isVolumeAll) {
+      const base = Object.fromEntries(
+        volumeExerciseNames.map((n) => [n, raw ? (raw[n] ?? 0) : (isFuture ? null : 0) as number | null])
+      );
+      return { periodLabel: row.periodLabel, ...base } as Record<string, string | number | null>;
+    }
     return {
-      week: formatWeekLabel(weekStart),
-      count,
-    };
+      periodLabel: row.periodLabel,
+      volume: raw ? raw.volume : (isFuture ? null : 0),
+    } as Record<string, string | number | null>;
   });
 
-  // 운동별 볼륨 그래프 (최근 4주)
-  const exerciseVolumes = calculateExerciseVolumes(workoutSessions);
-  const volumeExerciseNames =
-    exerciseVolumes.length > 0
-      ? Object.keys(exerciseVolumes[0]).filter((key) => key !== 'week')
-      : [];
-  const isVolumeAll = selectedVolumeExercise === 'all';
-  const volumeChartData = isVolumeAll
-    ? exerciseVolumes
-    : exerciseVolumes.map((item) => ({
-        week: item.week,
-        volume: item[selectedVolumeExercise] || 0,
-      }));
+  // 운동 부위별 볼륨 비율 (가슴, 등, 하체, 어깨) - 주간/월간/총
+  const targetBodyParts: BodyPart[] = ['가슴', '등', '하체', '어깨'];
+  const bodyPartVolumeData = getBodyPartRatioData(workoutSessions, exercises, targetBodyParts, bodyPartRatioPeriod);
+  const bodyPartColors: Record<string, string> = {
+    가슴: '#ef4444',
+    등: '#3b82f6',
+    하체: '#10b981',
+    어깨: '#f59e0b',
+  };
 
   // PR 기록 (스쿼트, 벤치프레스, 데드리프트만)
   const bigThreeExercises = ['스쿼트', '벤치프레스', '데드리프트'];
+  const estimated1RMs = getEstimatedPRs(workoutSessions, bigThreeExercises);
+  const estimatedPRChartData = estimated1RMs
+    .filter((e) => e.value > 0)
+    .map((e) => ({ name: e.exerciseName, value: Math.round(e.value) }));
+  const totalEstimatedPR = estimated1RMs.reduce((sum, e) => sum + e.value, 0);
+  const PR_COLORS = ['#60a5fa', '#a855f7', '#86efac'];
   
-  // PR 기록 그래프 데이터 (스쿼트, 벤치프레스, 데드리프트)
-  const allPRGraphData = getPRGraphData(personalRecords, bigThreeExercises);
-  const isPRAll = selectedPRExercise === 'all';
-  const prGraphData = isPRAll
-    ? allPRGraphData
-    : allPRGraphData.map((item) => ({
-        date: item.date,
-        [selectedPRExercise]: item[selectedPRExercise] || 0,
-      }));
+  // PR 기록 날짜 목록 (선택용)
+  const prDateOptions = getPRDateOptions(personalRecords, bigThreeExercises);
+  const effectivePRDate = selectedPRDate || prDateOptions[0] || '';
+  const prRecordData = getPRAsOfDate(personalRecords, bigThreeExercises, effectivePRDate);
+  const prChartDataForPie = prRecordData
+    .filter((e) => e.value > 0)
+    .map((e) => ({ name: e.exerciseName, value: e.value }));
+  const totalPRWeight = prRecordData.reduce((sum, e) => sum + e.value, 0);
+
+  useEffect(() => {
+    if (prDateOptions.length > 0 && (!selectedPRDate || !prDateOptions.includes(selectedPRDate))) {
+      setSelectedPRDate(prDateOptions[0]);
+    }
+  }, [prDateOptions.join(',')]);
 
   // 최고 중량 변화
   const { histories: maxWeightHistories, defaultExercise } = getMaxWeightHistories(workoutSessions);
   const maxWeightExerciseNames = Object.keys(maxWeightHistories);
-  const bodyParts: (BodyPart | 'all')[] = ['all', '가슴', '등', '어깨', '하체', '팔', '복근', '전신', '기타'];
+  const bodyParts: (BodyPart | 'all')[] = ['all', '가슴', '등', '어깨', '하체', '팔'];
   const exerciseNameToBodyPart = (name: string): BodyPart | undefined =>
     exercises.find((e) => e.name === name)?.bodyPart;
   const maxWeightExerciseNamesFiltered =
@@ -105,9 +182,51 @@ export default function Statistics() {
       : maxWeightExerciseNamesFiltered.includes(defaultExercise)
         ? defaultExercise
         : maxWeightExerciseNamesFiltered[0] || '';
-  const maxWeightHistory = effectiveMaxExercise
+  const rawMaxWeightHistory = effectiveMaxExercise
     ? maxWeightHistories[effectiveMaxExercise] || []
     : [];
+  const maxWeightHistoryRaw = aggregateMaxWeightByPeriod(rawMaxWeightHistory, maxWeightPeriod);
+  const maxWeightHistoryLabels = getMaxWeightHistoryDataOnly(maxWeightPeriod, maxWeightHistoryRaw);
+  const rawMap = new Map(
+    maxWeightHistoryRaw.map((e) => [e.date, e.maxWeight])
+  );
+  const todayLabel =
+    maxWeightPeriod === 'day'
+      ? format(new Date(), 'MM/dd', { locale: ko })
+      : maxWeightPeriod === 'week'
+      ? formatWeekLabel(startOfWeek(new Date(), { locale: ko }))
+      : formatMonthLabel(new Date());
+  const maxWeightHistory = maxWeightHistoryLabels.map((date, i) => {
+    const isFutureSlot = i === maxWeightHistoryLabels.length - 1;
+    const rawVal = rawMap.get(date);
+    const value = rawVal !== undefined ? rawVal : (isFutureSlot ? null : 0);
+    return { date, maxWeight: value } as { date: string; maxWeight: number | null };
+  });
+  const maxWeightTodayIndex = maxWeightHistoryLabels.indexOf(todayLabel);
+
+  const inbodyChartDataRaw = aggregateInbodyByPeriod(inbodyRecords, inbodyPeriod);
+  const inbodyChartDataLabels = getInbodyChartDataOnly(inbodyPeriod, inbodyChartDataRaw);
+  const inbodyRawMap = new Map(
+    inbodyChartDataRaw.map((e) => [e.date, { 체중: e.체중, 근육량: e.근육량, 체지방량: e.체지방량, 점수: e.점수 }])
+  );
+  const inbodyTodayLabel =
+    inbodyPeriod === 'day'
+      ? format(new Date(), 'MM/dd', { locale: ko })
+      : inbodyPeriod === 'week'
+      ? formatWeekLabel(startOfWeek(new Date(), { locale: ko }))
+      : formatMonthLabel(new Date());
+  const inbodyChartData = inbodyChartDataLabels.map((date, i) => {
+    const isFutureSlot = i === inbodyChartDataLabels.length - 1;
+    const raw = inbodyRawMap.get(date);
+    return {
+      date,
+      체중: raw ? raw.체중 : (isFutureSlot ? null : 0) as number | null,
+      근육량: raw ? raw.근육량 : (isFutureSlot ? null : 0) as number | null,
+      체지방량: raw ? raw.체지방량 : (isFutureSlot ? null : 0) as number | null,
+      점수: raw ? raw.점수 : (isFutureSlot ? null : 0) as number | null,
+    };
+  });
+  const inbodyTodayIndex = inbodyChartDataLabels.indexOf(inbodyTodayLabel);
   
   // 초기값 설정 (한 번만 실행)
   useEffect(() => {
@@ -124,28 +243,55 @@ export default function Statistics() {
     }
   }, [selectedMaxBodyPart, maxWeightExerciseNamesFiltered.join(',')]);
 
-  // 그래프 스크롤을 오른쪽(최근)으로 초기화
+  // 운동별 볼륨 탭 선택 시: 운동별 볼륨을 기본 표시
   useEffect(() => {
-    const scrollToRight = (ref: React.RefObject<HTMLDivElement | null>) => {
-      if (ref?.current) {
+    if (selectedGraph === 'volume') {
+      setActiveVolumeCard('volume');
+    }
+  }, [selectedGraph]);
+
+  // 그래프 스크롤: 오늘/최근 데이터를 중앙에 배치
+  useEffect(() => {
+    const scrollToCenterLastReal = (
+      ref: React.RefObject<HTMLDivElement | null>,
+      realCount: number
+    ) => {
+      if (ref?.current && realCount > 0) {
         const el = ref.current;
         requestAnimationFrame(() => {
-          el.scrollLeft = el.scrollWidth - el.clientWidth;
+          const target = SLOT_WIDTH * (realCount - 0.5) - el.clientWidth / 2;
+          el.scrollLeft = Math.max(0, Math.min(el.scrollWidth - el.clientWidth, target));
         });
       }
     };
-    if (selectedGraph === 'weekly') scrollToRight(weeklyChartScrollRef);
-    if (selectedGraph === 'pr') scrollToRight(prChartScrollRef);
-    if (selectedGraph === 'maxWeight') scrollToRight(maxWeightChartScrollRef);
-    if (selectedGraph === 'volume') scrollToRight(volumeChartScrollRef);
-    if (selectedGraph === 'inbody') scrollToRight(inbodyChartScrollRef);
-  }, [selectedGraph, weeklyWorkouts.length, allPRGraphData.length, maxWeightHistory.length, volumeChartData.length, inbodyRecords.length]);
-
-  // 중복 인바디 기록 정리 (컴포넌트 마운트 시 한 번만 실행)
-  useEffect(() => {
-    cleanupDuplicateInbodyRecords();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (selectedGraph === 'weekly')
+      scrollToCenterLastReal(weeklyChartScrollRef, exerciseCountDataRaw.length);
+    if (selectedGraph === 'maxWeight') {
+      const centerIdx = maxWeightTodayIndex >= 0 ? maxWeightTodayIndex + 1 : Math.ceil(maxWeightHistory.length / 2);
+      scrollToCenterLastReal(maxWeightChartScrollRef, centerIdx);
+    }
+    if (selectedGraph === 'volume' && volumeChartData.length > 0) {
+      const centerIdx = volumeFutureStartIndex;
+      scrollToCenterLastReal(volumeChartScrollRef, centerIdx);
+    }
+    if (selectedGraph === 'inbody' && activeInbodyCard === 'graph' && inbodyChartData.length > 0) {
+      const centerIdx = inbodyTodayIndex >= 0 ? inbodyTodayIndex + 1 : Math.ceil(inbodyChartData.length / 2);
+      scrollToCenterLastReal(inbodyChartScrollRef, centerIdx);
+    }
+  }, [
+    selectedGraph,
+    activeInbodyCard,
+    exerciseCountDataRaw.length,
+    maxWeightTodayIndex,
+    maxWeightHistory.length,
+    maxWeightPeriod,
+    volumeChartData.length,
+    volumeFutureStartIndex,
+    volumePeriod,
+    inbodyChartData.length,
+    inbodyTodayIndex,
+    inbodyPeriod,
+  ]);
 
   // 중복 인바디 기록 정리 (컴포넌트 마운트 시 한 번만 실행)
   useEffect(() => {
@@ -165,24 +311,12 @@ export default function Statistics() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inbodyRecords.length]);
 
-  // 인바디 기록 목록이 확장될 때 날짜 초기화
-  useEffect(() => {
-    if (selectedGraph === 'inbody' && isInbodyListExpanded && !selectedInbodyDate && inbodyRecords.length > 0) {
-      const sortedDates = Array.from(new Set(inbodyRecords.map(r => r.date.split('T')[0])))
-        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-      if (sortedDates.length > 0) {
-        setSelectedInbodyDate(sortedDates[0]);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isInbodyListExpanded, selectedGraph]);
-
   // 그래프 목록 정의
   const graphTabs = [
-    { id: 'weekly' as GraphType, label: '주간 운동 횟수', icon: Activity, available: true },
+    { id: 'weekly' as GraphType, label: '운동 횟수', icon: Activity, available: true },
     { id: 'pr' as GraphType, label: 'PR 기록', icon: Award, available: true },
     { id: 'maxWeight' as GraphType, label: '중량 변화', icon: TrendingUp, available: true },
-    { id: 'volume' as GraphType, label: '운동별 볼륨', icon: BarChart3, available: exerciseVolumes.length > 0 },
+    { id: 'volume' as GraphType, label: '운동별 볼륨', icon: BarChart3, available: exerciseVolumesByPeriod.length > 0 },
     { id: 'inbody' as GraphType, label: '인바디 변화', icon: Activity, available: true },
   ];
 
@@ -213,135 +347,299 @@ export default function Statistics() {
           })}
       </div>
 
-      {/* 주간 운동 횟수 */}
+      {/* 운동 횟수 */}
       {selectedGraph === 'weekly' && (
       <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-5 shadow-lg border border-gray-200 dark:border-gray-700 mx-auto max-w-4xl">
-        <div className="mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-xl">
               <Activity size={20} className="text-blue-600 dark:text-blue-400" />
             </div>
-            주간 운동 횟수
+            운동 횟수
           </h2>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setExerciseCountPeriod('week')}
+              className={`flex items-center gap-2 py-2 px-4 rounded-xl font-semibold transition-all ${
+                exerciseCountPeriod === 'week'
+                  ? 'bg-blue-500 text-white shadow-md'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+              }`}
+            >
+              <Activity size={18} />
+              주간 운동횟수
+            </button>
+            <button
+              onClick={() => setExerciseCountPeriod('month')}
+              className={`flex items-center gap-2 py-2 px-4 rounded-xl font-semibold transition-all ${
+                exerciseCountPeriod === 'month'
+                  ? 'bg-blue-500 text-white shadow-md'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+              }`}
+            >
+              <Activity size={18} />
+              월간 운동횟수
+            </button>
+          </div>
         </div>
-        <div
-          ref={weeklyChartScrollRef}
-          className="overflow-x-auto overflow-y-hidden"
-          style={{ width: '100%', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
-        >
-          <div
-            style={{
-              minWidth: Math.max(800, 72 * weeklyWorkouts.length),
-              height: 400,
-            }}
-          >
-            <ResponsiveContainer width="100%" height={400}>
-              <BarChart 
-                data={weeklyWorkouts} 
-                margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
-                barCategoryGap="20%"
-                barGap={20}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="week" />
-                <YAxis domain={[0, 7]} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#3b82f6" radius={[8, 8, 0, 0]} maxBarSize={126}>
-                  <LabelList dataKey="count" position="top" />
-                </Bar>
+        <div className="flex">
+          <div className="flex-shrink-0 bg-white dark:bg-gray-850 rounded-l-lg" style={{ width: Y_AXIS_WIDTH, height: 400 }}>
+            <ResponsiveContainer width={Y_AXIS_WIDTH} height={400}>
+              <BarChart data={exerciseCountData} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
+                <YAxis domain={exerciseCountPeriod === 'week' ? [0, 7] : [0, 31]} width={Y_AXIS_WIDTH - 5} tick={{ fontSize: 12 }} />
+                <Bar dataKey="count" fill="transparent" />
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <div
+            ref={weeklyChartScrollRef}
+            className="overflow-x-auto overflow-y-hidden scrollbar-hide flex-1 min-w-0"
+            style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+          >
+            <div style={{ minWidth: Math.max(800, SLOT_WIDTH * exerciseCountData.length), height: 400 }}>
+              <ResponsiveContainer width="100%" height={400}>
+                <BarChart 
+                  data={exerciseCountData} 
+                  margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+                  barCategoryGap="20%"
+                  barGap={20}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="period" />
+                  <YAxis width={0} hide domain={exerciseCountPeriod === 'week' ? [0, 7] : [0, 31]} />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#3b82f6" radius={[8, 8, 0, 0]} maxBarSize={126}>
+                    <LabelList dataKey="count" position="top" formatter={(v: number | null) => v == null ? '' : v} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
-          왼쪽 스크롤: 과거 · 오른쪽 스크롤: 최근
+          {exerciseCountPeriod === 'week' ? '주 단위' : '월 단위'} · 왼쪽 스크롤: 과거 · 오른쪽 스크롤: 최근
         </p>
       </div>
       )}
 
-      {/* PR 기록 그래프 */}
+      {/* PR 기록 / PR 예상기록 */}
       {selectedGraph === 'pr' && (
         <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-5 shadow-lg border border-gray-200 dark:border-gray-700 mx-auto max-w-4xl">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <div className="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl">
-                <Award size={20} className="text-yellow-600 dark:text-yellow-400" />
-              </div>
-              PR 기록 (빅3)
-            </h2>
-            {allPRGraphData.length > 0 && (
-              <select
-                value={selectedPRExercise}
-                onChange={(e) => setSelectedPRExercise(e.target.value)}
-                className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium mr-[30px] text-center"
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setActivePRCard('record')}
+                className={`flex items-center gap-2 py-2 px-4 rounded-xl font-semibold transition-all ${
+                  activePRCard === 'record'
+                    ? 'bg-yellow-500 text-white shadow-md'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                }`}
               >
-                <option value="all">전체</option>
-                {bigThreeExercises.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
+                <Award size={18} />
+                PR 기록
+              </button>
+              <button
+                onClick={() => setActivePRCard('predicted')}
+                className={`flex items-center gap-2 py-2 px-4 rounded-xl font-semibold transition-all ${
+                  activePRCard === 'predicted'
+                    ? 'bg-yellow-500 text-white shadow-md'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                }`}
+              >
+                <TrendingUp size={18} />
+                PR 예상기록
+              </button>
+            </div>
+            {activePRCard === 'record' && prDateOptions.length > 0 && (
+              <select
+                value={effectivePRDate}
+                onChange={(e) => setSelectedPRDate(e.target.value)}
+                className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium text-center"
+              >
+                {prDateOptions.map((d) => (
+                  <option key={d} value={d}>
+                    {format(parseISO(d), 'yyyy년 MM월 dd일', { locale: ko })}
                   </option>
                 ))}
               </select>
             )}
           </div>
-          {allPRGraphData.length > 0 ? (
-            <>
-              <div
-                ref={prChartScrollRef}
-                className="overflow-x-auto overflow-y-hidden"
-                style={{ width: '100%', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
-              >
-                <div style={{ minWidth: Math.max(800, 72 * prGraphData.length), height: 400 }}>
-                  <ResponsiveContainer width="100%" height={400}>
-                    <BarChart 
-                      data={prGraphData} 
-                      margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
-                      barCategoryGap="20%"
-                      barGap={20}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
+          {activePRCard === 'record' && (
+          <>
+          {prChartDataForPie.length > 0 ? (
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-4 shadow-lg border border-gray-200 dark:border-gray-700 col-span-2 flex items-center gap-4" style={{ height: '275px' }}>
+                <div className="flex flex-col gap-3 flex-shrink-0">
+                  {prChartDataForPie.map((entry, index) => (
+                    <div key={entry.name} className="flex items-center gap-2">
+                      <div
+                        className="w-5 h-5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: PR_COLORS[index % PR_COLORS.length] }}
+                      />
+                      <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                        {entry.name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex-1">
+                  <ResponsiveContainer width="100%" height={240}>
+                    <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                      <Pie
+                        data={prChartDataForPie}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ cx, cy, midAngle, outerRadius, value }) => {
+                          const RADIAN = Math.PI / 180;
+                          const radius = outerRadius * 0.5;
+                          const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                          const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                          return (
+                            <text
+                              x={x}
+                              y={y}
+                              fill="white"
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              fontSize={18}
+                              fontWeight="bold"
+                            >
+                              {value}kg
+                            </text>
+                          );
+                        }}
+                        outerRadius={120}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {prChartDataForPie.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={PR_COLORS[index % PR_COLORS.length]} />
+                        ))}
+                      </Pie>
                       <Tooltip />
-                      <Legend />
-                      {isPRAll
-                        ? bigThreeExercises.map((exerciseName, index) => {
-                            const hasData = allPRGraphData.some((d) => d[exerciseName] > 0);
-                            if (!hasData) return null;
-                            const colors = ['#60a5fa', '#a855f7', '#86efac'];
-                            return (
-                              <Bar
-                                key={exerciseName}
-                                dataKey={exerciseName}
-                                fill={colors[index]}
-                                radius={[8, 8, 0, 0]}
-                                maxBarSize={126}
-                              >
-                                <LabelList dataKey={exerciseName} position="top" />
-                              </Bar>
-                            );
-                          })
-                        : (
-                          <Bar
-                            dataKey={selectedPRExercise}
-                            fill="#60a5fa"
-                            radius={[8, 8, 0, 0]}
-                            maxBarSize={126}
-                          >
-                            <LabelList dataKey={selectedPRExercise} position="top" />
-                          </Bar>
-                        )}
-                    </BarChart>
+                    </PieChart>
                   </ResponsiveContainer>
                 </div>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">왼쪽 스크롤: 과거 · 오른쪽 스크롤: 최근</p>
-            </>
-          ) : (
-            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-              <Award size={48} className="mx-auto mb-4 opacity-50" />
-              <p>기록이 없습니다.</p>
+              <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-4 shadow-lg border border-gray-200 dark:border-gray-700 flex flex-col justify-center items-center" style={{ height: '275px' }}>
+                <div className="text-center w-full">
+                  <div className="text-xl font-bold text-gray-700 dark:text-gray-300 mb-2">3대</div>
+                  <div className="text-6xl font-bold bg-gradient-to-br from-yellow-500 to-orange-500 bg-clip-text text-transparent leading-tight">
+                    {totalPRWeight.toLocaleString()}kg
+                  </div>
+                </div>
+              </div>
             </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-4 shadow-lg border border-gray-200 dark:border-gray-700 col-span-2 flex items-center justify-center" style={{ height: '275px' }}>
+                <div className="text-center text-gray-500 dark:text-gray-400">
+                  <Award size={48} className="mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">PR 기록이 없습니다</p>
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-4 shadow-lg border border-gray-200 dark:border-gray-700 flex flex-col justify-center items-center" style={{ height: '275px' }}>
+                <div className="text-center w-full">
+                  <div className="text-xl font-bold text-gray-700 dark:text-gray-300 mb-2">3대</div>
+                  <div className="text-6xl font-bold bg-gradient-to-br from-yellow-500 to-orange-500 bg-clip-text text-transparent leading-tight">
+                    0kg
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          </>
+          )}
+
+          {activePRCard === 'predicted' && (
+          <>
+          {estimatedPRChartData.length > 0 ? (
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-4 shadow-lg border border-gray-200 dark:border-gray-700 col-span-2 flex items-center gap-4" style={{ height: '275px' }}>
+                <div className="flex flex-col gap-3 flex-shrink-0">
+                  {estimatedPRChartData.map((entry, index) => (
+                    <div key={entry.name} className="flex items-center gap-2">
+                      <div
+                        className="w-5 h-5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: PR_COLORS[index % PR_COLORS.length] }}
+                      />
+                      <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                        {entry.name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex-1">
+                  <ResponsiveContainer width="100%" height={240}>
+                    <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                      <Pie
+                        data={estimatedPRChartData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ cx, cy, midAngle, outerRadius, value }) => {
+                          const RADIAN = Math.PI / 180;
+                          const radius = outerRadius * 0.5;
+                          const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                          const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                          return (
+                            <text
+                              x={x}
+                              y={y}
+                              fill="white"
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              fontSize={18}
+                              fontWeight="bold"
+                            >
+                              {value}kg
+                            </text>
+                          );
+                        }}
+                        outerRadius={120}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {estimatedPRChartData.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={PR_COLORS[index % PR_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value: number) => [`예상 ${value}kg`, '1RM']} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-4 shadow-lg border border-gray-200 dark:border-gray-700 flex flex-col justify-center items-center" style={{ height: '275px' }}>
+                <div className="text-center w-full">
+                  <div className="text-xl font-bold text-gray-700 dark:text-gray-300 mb-2">예상 3대</div>
+                  <div className="text-6xl font-bold bg-gradient-to-br from-yellow-500 to-orange-500 bg-clip-text text-transparent leading-tight">
+                    {Math.round(totalEstimatedPR).toLocaleString()}kg
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">운동 기록 기반 1RM 추정</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-4 shadow-lg border border-gray-200 dark:border-gray-700 col-span-2 flex items-center justify-center" style={{ height: '275px' }}>
+                <div className="text-center text-gray-500 dark:text-gray-400">
+                  <TrendingUp size={48} className="mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">PR 예상기록이 없습니다</p>
+                  <p className="text-xs mt-1">빅3 운동 기록을 추가하면 예상 1RM을 계산합니다</p>
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-4 shadow-lg border border-gray-200 dark:border-gray-700 flex flex-col justify-center items-center" style={{ height: '275px' }}>
+                <div className="text-center w-full">
+                  <div className="text-xl font-bold text-gray-700 dark:text-gray-300 mb-2">예상 3대</div>
+                  <div className="text-6xl font-bold bg-gradient-to-br from-yellow-500 to-orange-500 bg-clip-text text-transparent leading-tight">
+                    0kg
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          </>
           )}
         </div>
       )}
@@ -356,8 +654,16 @@ export default function Statistics() {
               </div>
               중량 변화
             </h2>
-            {maxWeightHistory.length > 0 && maxWeightExerciseNames.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 mr-[30px]">
+            <div className="flex flex-wrap items-center gap-2 mr-[30px]">
+                <select
+                  value={maxWeightPeriod}
+                  onChange={(e) => setMaxWeightPeriod(e.target.value as 'day' | 'week' | 'month')}
+                  className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium text-center"
+                >
+                  <option value="day">일별</option>
+                  <option value="week">주별</option>
+                  <option value="month">월별</option>
+                </select>
                 <select
                   value={selectedMaxBodyPart}
                   onChange={(e) => setSelectedMaxBodyPart(e.target.value as BodyPart | 'all')}
@@ -386,99 +692,146 @@ export default function Statistics() {
                   )}
                 </select>
               </div>
-            )}
           </div>
-          {maxWeightHistory.length > 0 ? (
-            <>
-              <div
-                ref={maxWeightChartScrollRef}
-                className="overflow-x-auto overflow-y-hidden"
-                style={{ width: '100%', maxWidth: 380, WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
-              >
-                <div style={{ minWidth: Math.max(800, 80 * maxWeightHistory.length), height: 400 }}>
-                  <ResponsiveContainer width="100%" height={400}>
-                    <ComposedChart 
-                      data={maxWeightHistory} 
-                      margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
-                      barCategoryGap="20%"
-                      barGap={20}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="maxWeight" name="최고 중량" radius={[8, 8, 0, 0]} maxBarSize={126}>
-                        <LabelList dataKey="maxWeight" position="top" />
-                        {maxWeightHistory.map((entry, index) => {
-                          const today = format(new Date(), 'MM/dd', { locale: ko });
-                          const isToday = entry.date === today;
-                          return (
-                            <Cell
-                              key={`cell-${index}`}
-                              fill={isToday ? '#F5D67D' : '#A1A7E7'}
-                            />
-                          );
-                        })}
-                      </Bar>
-                      <Line
-                        type="monotone"
-                        dataKey="maxWeight"
-                        name="최고 중량"
-                        stroke="#10b981"
-                        strokeWidth={2}
-                      />
-                    </ComposedChart>
+          <>
+              <div className="flex">
+                <div className="flex-shrink-0 bg-white dark:bg-gray-850 rounded-l-lg" style={{ width: Y_AXIS_WIDTH, height: 400 }}>
+                  <ResponsiveContainer width={Y_AXIS_WIDTH} height={400}>
+                    <LineChart data={maxWeightHistory} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
+                      <YAxis width={Y_AXIS_WIDTH - 5} tick={{ fontSize: 12 }} />
+                      <Line type="monotone" dataKey="maxWeight" stroke="transparent" />
+                    </LineChart>
                   </ResponsiveContainer>
                 </div>
+                <div
+                  ref={maxWeightChartScrollRef}
+                  className="overflow-x-auto overflow-y-hidden scrollbar-hide flex-1 min-w-0"
+                  style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+                >
+                  <div style={{ minWidth: Math.max(800, SLOT_WIDTH * maxWeightHistory.length), height: 400 }}>
+                    <ResponsiveContainer width="100%" height={400}>
+                      <LineChart
+                        data={maxWeightHistory}
+                        margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis width={0} hide />
+                        <Tooltip />
+                        <Legend />
+                        <Line
+                          type="monotone"
+                          dataKey="maxWeight"
+                          name="최고 중량"
+                          stroke="#10b981"
+                          strokeWidth={2}
+                          connectNulls={false}
+                          dot={{ fill: '#10b981' }}
+                        >
+                          <LabelList dataKey="maxWeight" position="top" formatter={(v: number | null) => v == null ? '' : v} />
+                        </Line>
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">왼쪽 스크롤: 과거 · 오른쪽 스크롤: 최근 (기본: 오늘 기준 약 4개)</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">왼쪽 스크롤: 과거 · 오른쪽 스크롤: 최근</p>
             </>
-          ) : (
-            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-              <TrendingUp size={48} className="mx-auto mb-4 opacity-50" />
-              <p>기록이 없습니다.</p>
-            </div>
-          )}
         </div>
       )}
 
-      {/* 운동별 볼륨 그래프 */}
-      {selectedGraph === 'volume' && exerciseVolumes.length > 0 && (
+      {/* 운동별 볼륨 / 운동 부위 비율 */}
+      {selectedGraph === 'volume' && (
         <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-5 shadow-lg border border-gray-200 dark:border-gray-700 mx-auto max-w-4xl">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-xl">
-                <BarChart3 size={20} className="text-purple-600 dark:text-purple-400" />
-              </div>
-              운동별 볼륨 (최근 4주)
-            </h2>
-            {volumeExerciseNames.length > 0 && (
-              <select
-                value={selectedVolumeExercise}
-                onChange={(e) => setSelectedVolumeExercise(e.target.value)}
-                className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium mr-[30px] text-center"
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setActiveVolumeCard('volume')}
+                className={`flex items-center gap-2 py-2 px-4 rounded-xl font-semibold transition-all ${
+                  activeVolumeCard === 'volume'
+                    ? 'bg-purple-500 text-white shadow-md'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                }`}
               >
-                <option value="all">전체 (상위 5개 운동)</option>
-                {volumeExerciseNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
+                <BarChart3 size={18} />
+                운동별 볼륨
+              </button>
+              <button
+                onClick={() => setActiveVolumeCard('bodyPart')}
+                className={`flex items-center gap-2 py-2 px-4 rounded-xl font-semibold transition-all ${
+                  activeVolumeCard === 'bodyPart'
+                    ? 'bg-purple-500 text-white shadow-md'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                }`}
+              >
+                <BarChart3 size={18} />
+                운동 부위 비율
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+            {activeVolumeCard === 'volume' && (
+              <>
+                <select
+                  value={volumePeriod}
+                  onChange={(e) => setVolumePeriod(e.target.value as 'day' | 'week' | 'month')}
+                  className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium text-center"
+                >
+                  <option value="day">일별</option>
+                  <option value="week">주별</option>
+                  <option value="month">월별</option>
+                </select>
+                <select
+                  value={selectedVolumeFilter}
+                  onChange={(e) => setSelectedVolumeFilter(e.target.value as 'all' | BodyPart)}
+                  className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium text-center"
+                >
+                  <option value="all">전체 (상위 5개 운동)</option>
+                  <option value="가슴">가슴</option>
+                  <option value="등">등</option>
+                  <option value="하체">하체</option>
+                  <option value="어깨">어깨</option>
+                </select>
+              </>
+            )}
+            {activeVolumeCard === 'bodyPart' && (
+              <select
+                value={bodyPartRatioPeriod}
+                onChange={(e) => setBodyPartRatioPeriod(e.target.value as 'week' | 'month' | 'total')}
+                className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium text-center"
+              >
+                <option value="week">주간 비율</option>
+                <option value="month">월간 비율</option>
+                <option value="total">총 비율</option>
               </select>
             )}
+            </div>
           </div>
-          <div
-            ref={volumeChartScrollRef}
-            className="overflow-x-auto overflow-y-hidden"
-            style={{ width: '100%', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
-          >
-            <div style={{ minWidth: Math.max(800, 72 * volumeChartData.length), height: 400 }}>
-              <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={volumeChartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="week" />
-                  <YAxis />
+          {activeVolumeCard === 'volume' && (
+          <>
+          {exerciseVolumesByPeriod.length > 0 || volumeChartData.length > 0 ? (
+          <>
+          <div className="flex">
+            <div className="flex-shrink-0 bg-white dark:bg-gray-850 rounded-l-lg" style={{ width: Y_AXIS_WIDTH, height: 400 }}>
+              <ResponsiveContainer width={Y_AXIS_WIDTH} height={400}>
+                <LineChart data={volumeChartData} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
+                  <YAxis width={Y_AXIS_WIDTH - 5} tick={{ fontSize: 12 }} />
+                  {isVolumeAll
+                    ? volumeExerciseNames.map((key) => <Line key={key} type="monotone" dataKey={key} stroke="transparent" />)
+                    : <Line type="monotone" dataKey="volume" stroke="transparent" />}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div
+              ref={volumeChartScrollRef}
+              className="overflow-x-auto overflow-y-hidden scrollbar-hide flex-1 min-w-0"
+              style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+            >
+              <div style={{ minWidth: Math.max(800, SLOT_WIDTH * volumeChartData.length), height: 400 }}>
+                <ResponsiveContainer width="100%" height={400}>
+                  <LineChart data={volumeChartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="periodLabel" />
+                    <YAxis width={0} hide />
                   <Tooltip />
                   <Legend />
                   {isVolumeAll
@@ -489,89 +842,196 @@ export default function Statistics() {
                           dataKey={exerciseName}
                           stroke={`hsl(${(index * 60) % 360}, 70%, 50%)`}
                           strokeWidth={2}
+                          connectNulls={false}
                         >
-                          <LabelList dataKey={exerciseName} position="top" />
+                          <LabelList dataKey={exerciseName} position="top" formatter={(v: number | null) => v == null ? '' : v} />
                         </Line>
                       ))
                     : (
                       <Line
                         type="monotone"
                         dataKey="volume"
-                        name={selectedVolumeExercise || '볼륨'}
+                        name={selectedVolumeFilter === 'all' ? '볼륨' : selectedVolumeFilter}
                         stroke="#3b82f6"
                         strokeWidth={2}
+                        connectNulls={false}
                       >
-                        <LabelList dataKey="volume" position="top" />
+                        <LabelList dataKey="volume" position="top" formatter={(v: number | null) => v == null ? '' : v} />
                       </Line>
                     )}
-                </LineChart>
-              </ResponsiveContainer>
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">왼쪽 스크롤: 과거 주차 · 오른쪽 스크롤: 최근 주차</p>
+          </>
+          ) : (
+            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+              <BarChart3 size={48} className="mx-auto mb-4 opacity-50" />
+              <p>운동별 볼륨 데이터가 없습니다.</p>
+            </div>
+          )}
+          </>
+          )}
+
+          {activeVolumeCard === 'bodyPart' && (
+          <>
+          {bodyPartVolumeData.length > 0 ? (
+            <div className="flex flex-col sm:flex-row items-center gap-6">
+              <div className="w-full sm:w-1/2 sm:pl-8" style={{ height: 320 }}>
+                <ResponsiveContainer width="100%" height={320}>
+                  <PieChart>
+                    <Pie
+                      data={bodyPartVolumeData}
+                      cx="55%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={120}
+                      paddingAngle={2}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    >
+                      {bodyPartVolumeData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={bodyPartColors[entry.name] || '#94a3b8'} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number, _name: string, props: { payload?: BodyPartRatioEntry }) => {
+                        const p = props.payload;
+                        return bodyPartRatioPeriod === 'total' && p?.rawVolume != null
+                          ? [`${p.rawVolume.toLocaleString()} kg (${value.toFixed(1)}%)`, '볼륨']
+                          : [`${Number(value).toFixed(1)}%`, '비율'];
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="w-full sm:w-1/2 flex flex-col gap-3">
+                {bodyPartVolumeData.map((entry) => (
+                  <div key={entry.name} className="flex items-center gap-2">
+                    <div
+                      className="w-4 h-4 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: bodyPartColors[entry.name] || '#94a3b8' }}
+                    />
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {entry.name}
+                    </span>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {bodyPartRatioPeriod === 'total' && entry.rawVolume != null
+                        ? `${entry.rawVolume.toLocaleString()} kg (${entry.value.toFixed(1)}%)`
+                        : `평균 ${entry.value.toFixed(1)}%`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+              <BarChart3 size={48} className="mx-auto mb-4 opacity-50" />
+              <p>가슴, 등, 하체, 어깨 부위의 운동 기록이 없습니다.</p>
+              <p className="text-sm mt-2">운동을 기록하면 부위별 비율이 표시됩니다.</p>
+            </div>
+          )}
+          </>
+          )}
         </div>
       )}
 
-      {/* 인바디 변화 */}
+      {/* 인바디 변화 / 인바디 기록 목록 */}
       {selectedGraph === 'inbody' && (
         <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-5 shadow-lg border border-gray-200 dark:border-gray-700 mx-auto max-w-4xl">
-          <div className="flex items-center justify-between mb-4">
-            <h2 
-              className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-              onClick={() => {
-                setIsInbodyGraphExpanded(true);
-                setIsInbodyListExpanded(false);
-              }}
-            >
-              <div className="p-2 bg-pink-100 dark:bg-pink-900/30 rounded-xl">
-                <Activity size={20} className="text-pink-600 dark:text-pink-400" />
-              </div>
-              인바디 변화
-            </h2>
-            {inbodyRecords.length > 0 && isInbodyGraphExpanded && (
-              <select
-                value={selectedInbodyMetric}
-                onChange={(e) => setSelectedInbodyMetric(e.target.value as '체중' | '근육량' | '체지방량' | '점수')}
-                className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium mr-[30px] text-center"
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setActiveInbodyCard('graph')}
+                className={`flex items-center gap-2 py-2 px-4 rounded-xl font-semibold transition-all ${
+                  activeInbodyCard === 'graph'
+                    ? 'bg-pink-500 text-white shadow-md'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                }`}
               >
-                <option value="체중">체중</option>
-                <option value="근육량">근육량</option>
-                <option value="체지방량">체지방량</option>
-                <option value="점수">점수</option>
+                <Activity size={18} />
+                인바디 변화
+              </button>
+              <button
+                onClick={() => setActiveInbodyCard('list')}
+                className={`flex items-center gap-2 py-2 px-4 rounded-xl font-semibold transition-all ${
+                  activeInbodyCard === 'list'
+                    ? 'bg-pink-500 text-white shadow-md'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                }`}
+              >
+                <List size={18} />
+                인바디 기록 목록
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+            {activeInbodyCard === 'graph' && inbodyRecords.length > 0 && (
+              <>
+                <select
+                  value={inbodyPeriod}
+                  onChange={(e) => setInbodyPeriod(e.target.value as 'day' | 'week' | 'month')}
+                  className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium text-center"
+                >
+                  <option value="day">일별</option>
+                  <option value="week">주별</option>
+                  <option value="month">월별</option>
+                </select>
+                <select
+                  value={selectedInbodyMetric}
+                  onChange={(e) => setSelectedInbodyMetric(e.target.value as '체중' | '근육량' | '체지방량' | '점수')}
+                  className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium text-center"
+                >
+                  <option value="체중">체중</option>
+                  <option value="근육량">근육량</option>
+                  <option value="체지방량">체지방량</option>
+                  <option value="점수">점수</option>
+                </select>
+              </>
+            )}
+            {activeInbodyCard === 'list' && inbodyRecords.length > 0 && selectedInbodyDate && (
+              <select
+                value={selectedInbodyDate}
+                onChange={(e) => setSelectedInbodyDate(e.target.value)}
+                className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium text-center"
+              >
+                {Array.from(new Set(inbodyRecords.map(r => r.date.split('T')[0])))
+                  .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+                  .slice(0, 7)
+                  .map((dateStr) => (
+                    <option key={dateStr} value={dateStr}>
+                      {format(parseISO(dateStr), 'yyyy년 MM월 dd일', { locale: ko })}
+                    </option>
+                  ))}
               </select>
             )}
+            </div>
           </div>
-          {isInbodyGraphExpanded && (
+          {activeInbodyCard === 'graph' && (
             <>
               {inbodyRecords.length > 0 ? (
                 <>
-                  <div
-                    ref={inbodyChartScrollRef}
-                    className="overflow-x-auto overflow-y-hidden"
-                    style={{ width: '100%', maxWidth: 380, WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
-                  >
-                    <div style={{ minWidth: Math.max(800, 80 * inbodyRecords.length), height: 400 }}>
-                      <ResponsiveContainer width="100%" height={400}>
-                        <LineChart
-                          data={inbodyRecords
-                            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                            .map((record) => {
-                              const inbodyScore = record.notes?.includes('인바디점수:') 
-                                ? parseFloat(record.notes.split('인바디점수:')[1]?.split(',')[0]?.trim() || '0')
-                                : null;
-                              return {
-                                date: format(parseISO(record.date), 'MM/dd', { locale: ko }),
-                                체중: record.weight || 0,
-                                근육량: record.muscleMass || 0,
-                                체지방량: record.bodyFat || 0,
-                                점수: inbodyScore || 0,
-                              };
-                            })}
-                          margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="date" />
-                          <YAxis />
+                  <div className="flex">
+                    <div className="flex-shrink-0 bg-white dark:bg-gray-850 rounded-l-lg" style={{ width: Y_AXIS_WIDTH, height: 400 }}>
+                      <ResponsiveContainer width={Y_AXIS_WIDTH} height={400}>
+                        <LineChart data={inbodyChartData} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
+                          <YAxis width={Y_AXIS_WIDTH - 5} tick={{ fontSize: 12 }} />
+                          <Line type="monotone" dataKey={selectedInbodyMetric} stroke="transparent" />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div
+                      ref={inbodyChartScrollRef}
+                      className="overflow-x-auto overflow-y-hidden scrollbar-hide flex-1 min-w-0"
+                      style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+                    >
+                      <div style={{ minWidth: Math.max(800, SLOT_WIDTH * inbodyChartData.length), height: 400 }}>
+                        <ResponsiveContainer width="100%" height={400}>
+                          <LineChart data={inbodyChartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="date" />
+                            <YAxis width={0} hide />
                           <Tooltip />
                           <Legend align="center" />
                           {selectedInbodyMetric === '체중' && (
@@ -581,8 +1041,9 @@ export default function Statistics() {
                               name="체중"
                               stroke="#3b82f6"
                               strokeWidth={2}
+                              connectNulls={false}
                             >
-                              <LabelList dataKey="체중" position="top" />
+                              <LabelList dataKey="체중" position="top" formatter={(v: number | null) => v == null ? '' : v} />
                             </Line>
                           )}
                           {selectedInbodyMetric === '근육량' && (
@@ -592,8 +1053,9 @@ export default function Statistics() {
                               name="근육량"
                               stroke="#10b981"
                               strokeWidth={2}
+                              connectNulls={false}
                             >
-                              <LabelList dataKey="근육량" position="top" />
+                              <LabelList dataKey="근육량" position="top" formatter={(v: number | null) => v == null ? '' : v} />
                             </Line>
                           )}
                           {selectedInbodyMetric === '체지방량' && (
@@ -603,8 +1065,9 @@ export default function Statistics() {
                               name="체지방량"
                               stroke="#ef4444"
                               strokeWidth={2}
+                              connectNulls={false}
                             >
-                              <LabelList dataKey="체지방량" position="top" />
+                              <LabelList dataKey="체지방량" position="top" formatter={(v: number | null) => v == null ? '' : v} />
                             </Line>
                           )}
                           {selectedInbodyMetric === '점수' && (
@@ -614,15 +1077,17 @@ export default function Statistics() {
                               name="점수"
                               stroke="#a855f7"
                               strokeWidth={2}
+                              connectNulls={false}
                             >
-                              <LabelList dataKey="점수" position="top" />
+                              <LabelList dataKey="점수" position="top" formatter={(v: number | null) => v == null ? '' : v} />
                             </Line>
                           )}
-                        </LineChart>
-                      </ResponsiveContainer>
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">왼쪽 스크롤: 과거 · 오른쪽 스크롤: 최근 (기본: 오늘 기준 약 4개)</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">왼쪽 스크롤: 과거 · 오른쪽 스크롤: 최근</p>
                 </>
               ) : (
                 <div className="text-center py-12 text-gray-500 dark:text-gray-400">
@@ -632,42 +1097,8 @@ export default function Statistics() {
               )}
             </>
           )}
-        </div>
-      )}
-
-      {/* 인바디 기록 목록 */}
-      {selectedGraph === 'inbody' && (
-        <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-5 shadow-lg border border-gray-200 dark:border-gray-700 mx-auto max-w-4xl mt-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 
-              className="text-lg font-semibold text-gray-900 dark:text-white cursor-pointer hover:opacity-80 transition-opacity"
-              onClick={() => {
-                setIsInbodyListExpanded(true);
-                setIsInbodyGraphExpanded(false);
-              }}
-            >
-              인바디 기록 목록
-            </h3>
-            {inbodyRecords.length > 0 && selectedInbodyDate && isInbodyListExpanded && (
-              <select
-                value={selectedInbodyDate}
-                onChange={(e) => setSelectedInbodyDate(e.target.value)}
-                className="px-4 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium text-center"
-                style={{ marginRight: '1.75rem' }}
-              >
-                {Array.from(new Set(inbodyRecords.map(r => r.date.split('T')[0])))
-                  .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
-                  .slice(0, 7) // 최근 7개만 표시
-                  .map((dateStr) => (
-                    <option key={dateStr} value={dateStr}>
-                      {format(parseISO(dateStr), 'yyyy년 MM월 dd일', { locale: ko })}
-                    </option>
-                  ))}
-              </select>
-            )}
-          </div>
-          {isInbodyListExpanded && (
-            <>
+          {activeInbodyCard === 'list' && (
+          <>
               {inbodyRecords.length > 0 ? (
                 <div className="space-y-8">
                   {inbodyRecords
@@ -1011,50 +1442,498 @@ function formatWeekLabel(date: Date) {
   return `${month}월 ${weekOfMonth}주차`;
 }
 
-function calculateExerciseVolumes(workoutSessions: any[]) {
-  const exerciseMap = new Map<string, Map<string, number>>();
-  const weeks = Array.from({ length: 4 }, (_, i) => {
-    const weekStart = startOfWeek(subWeeks(new Date(), 3 - i), { locale: ko });
-    return formatWeekLabel(weekStart);
+/** Epley 공식: 1RM = weight × (1 + reps/30) */
+function estimate1RM(weight: number, reps: number): number {
+  if (weight <= 0 || reps <= 0) return 0;
+  if (reps === 1) return weight;
+  return weight * (1 + reps / 30);
+}
+
+function getEstimatedPRs(
+  sessions: { exercises: { exerciseName: string; sets: { weight: number; reps: number }[] }[] }[],
+  exerciseNames: string[]
+): { exerciseName: string; value: number }[] {
+  const maxEstimated: Record<string, number> = {};
+  exerciseNames.forEach((name) => { maxEstimated[name] = 0; });
+
+  sessions.forEach((session) => {
+    session.exercises.forEach((ex) => {
+      if (!exerciseNames.includes(ex.exerciseName)) return;
+      ex.sets.forEach((set) => {
+        const est = estimate1RM(set.weight, set.reps);
+        if (est > (maxEstimated[ex.exerciseName] ?? 0)) {
+          maxEstimated[ex.exerciseName] = est;
+        }
+      });
+    });
   });
+
+  return exerciseNames.map((name) => ({
+    exerciseName: name,
+    value: maxEstimated[name] ?? 0,
+  }));
+}
+
+function formatMonthLabel(date: Date) {
+  return format(date, 'yyyy년 M월', { locale: ko });
+}
+
+type BodyPartRatioEntry = { name: string; value: number; rawVolume?: number };
+
+function getVolumeByPart(
+  sessions: { exercises: { exerciseName: string; sets: { weight: number; reps: number }[] }[] }[],
+  exercises: { name: string; bodyPart: BodyPart }[],
+  targetBodyParts: BodyPart[]
+): Record<string, number> {
+  const volumeByPart: Record<string, number> = {};
+  targetBodyParts.forEach((bp) => { volumeByPart[bp] = 0; });
+
+  sessions.forEach((session) => {
+    session.exercises.forEach((ex) => {
+      const exercise = exercises.find((e) => e.name === ex.exerciseName);
+      const bodyPart = exercise?.bodyPart;
+      if (!bodyPart || !targetBodyParts.includes(bodyPart)) return;
+
+      const volume = ex.sets.reduce((sum, set) => sum + set.weight * set.reps, 0);
+      volumeByPart[bodyPart] = (volumeByPart[bodyPart] || 0) + volume;
+    });
+  });
+
+  return volumeByPart;
+}
+
+function getBodyPartRatioData(
+  workoutSessions: { date: string; exercises: { exerciseName: string; sets: { weight: number; reps: number }[] }[] }[],
+  exercises: { name: string; bodyPart: BodyPart }[],
+  targetBodyParts: BodyPart[],
+  period: 'week' | 'month' | 'total'
+): BodyPartRatioEntry[] {
+  if (workoutSessions.length === 0) return [];
+
+  if (period === 'total') {
+    const volumeByPart = getVolumeByPart(workoutSessions, exercises, targetBodyParts);
+    const total = targetBodyParts.reduce((sum, bp) => sum + (volumeByPart[bp] || 0), 0);
+    if (total === 0) return [];
+
+    return targetBodyParts
+      .filter((bp) => (volumeByPart[bp] || 0) > 0)
+      .map((bp) => ({
+        name: bp,
+        value: ((volumeByPart[bp] || 0) / total) * 100,
+        rawVolume: volumeByPart[bp] || 0,
+      }))
+      .sort((a, b) => b.value - a.value);
+  }
+
+  // 주간 또는 월간: 각 주/월별 비율을 구한 뒤 평균
+  const ratioSums: Record<string, number> = {};
+  let periodCount = 0;
+
+  if (period === 'week') {
+    const weekMap = new Map<string, typeof workoutSessions>();
+    workoutSessions.forEach((session) => {
+      const sessionDate = parseISO(session.date);
+      const weekStart = startOfWeek(sessionDate, { locale: ko });
+      const key = weekStart.toISOString();
+      if (!weekMap.has(key)) weekMap.set(key, []);
+      weekMap.get(key)!.push(session);
+    });
+
+    weekMap.forEach((sessions) => {
+      const volumeByPart = getVolumeByPart(sessions, exercises, targetBodyParts);
+      const total = targetBodyParts.reduce((sum, bp) => sum + (volumeByPart[bp] || 0), 0);
+      if (total === 0) return;
+
+      periodCount += 1;
+      targetBodyParts.forEach((bp) => {
+        const pct = ((volumeByPart[bp] || 0) / total) * 100;
+        ratioSums[bp] = (ratioSums[bp] || 0) + pct;
+      });
+    });
+  } else {
+    const monthMap = new Map<string, typeof workoutSessions>();
+    workoutSessions.forEach((session) => {
+      const sessionDate = parseISO(session.date);
+      const monthStart = startOfMonth(sessionDate);
+      const key = monthStart.toISOString();
+      if (!monthMap.has(key)) monthMap.set(key, []);
+      monthMap.get(key)!.push(session);
+    });
+
+    monthMap.forEach((sessions) => {
+      const volumeByPart = getVolumeByPart(sessions, exercises, targetBodyParts);
+      const total = targetBodyParts.reduce((sum, bp) => sum + (volumeByPart[bp] || 0), 0);
+      if (total === 0) return;
+
+      periodCount += 1;
+      targetBodyParts.forEach((bp) => {
+        const pct = ((volumeByPart[bp] || 0) / total) * 100;
+        ratioSums[bp] = (ratioSums[bp] || 0) + pct;
+      });
+    });
+  }
+
+  if (periodCount === 0) return [];
+
+  return targetBodyParts
+    .filter((bp) => (ratioSums[bp] || 0) > 0)
+    .map((bp) => ({
+      name: bp,
+      value: (ratioSums[bp] || 0) / periodCount,
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
+/** 운동별 볼륨: 일별/주별/월별 */
+function calculateExerciseVolumesByPeriod(
+  workoutSessions: any[],
+  period: 'day' | 'week' | 'month'
+): { periodLabel: string } & Record<string, number>[] {
+  const exerciseMap = new Map<string, Map<string, number>>();
+  const getPeriods = () => {
+    const PAST = period === 'day' ? 7 : 4;
+    const FUTURE = 5;
+    const now = new Date();
+    if (period === 'day') {
+      return Array.from({ length: PAST + 1 + FUTURE }, (_, i) => {
+        const d = addDays(now, i - PAST);
+        return format(d, 'MM/dd', { locale: ko });
+      });
+    }
+    if (period === 'week') {
+      return Array.from({ length: PAST + 1 + FUTURE }, (_, i) => {
+        const d = addWeeks(now, i - PAST);
+        return formatWeekLabel(startOfWeek(d, { locale: ko }));
+      });
+    }
+    return Array.from({ length: PAST + 1 + FUTURE }, (_, i) => {
+      const d = addMonths(now, i - PAST);
+      return formatMonthLabel(d);
+    });
+  };
+  const periods = getPeriods();
+
+  const getKey = (d: Date) =>
+    period === 'day'
+      ? format(d, 'MM/dd', { locale: ko })
+      : period === 'week'
+      ? formatWeekLabel(startOfWeek(d, { locale: ko }))
+      : formatMonthLabel(d);
 
   workoutSessions.forEach((session) => {
     const sessionDate = parseISO(session.date);
-    const weekStart = startOfWeek(sessionDate, { locale: ko });
-    const weekKey = formatWeekLabel(weekStart);
+    const key = getKey(sessionDate);
+    if (!periods.includes(key)) return;
 
     session.exercises.forEach((exercise: any) => {
-      const volume = exercise.sets.reduce(
-        (sum: number, set: any) => sum + set.weight * set.reps,
-        0
-      );
-
+      const volume = exercise.sets.reduce((sum: number, set: any) => sum + set.weight * set.reps, 0);
       if (!exerciseMap.has(exercise.exerciseName)) {
         exerciseMap.set(exercise.exerciseName, new Map());
       }
-
-      const weekMap = exerciseMap.get(exercise.exerciseName)!;
-      weekMap.set(weekKey, (weekMap.get(weekKey) || 0) + volume);
+      const periodMap = exerciseMap.get(exercise.exerciseName)!;
+      periodMap.set(key, (periodMap.get(key) || 0) + volume);
     });
   });
 
   const topExercises = Array.from(exerciseMap.entries())
-    .map(([name, weekMap]) => ({
-      name,
-      totalVolume: Array.from(weekMap.values()).reduce((a, b) => a + b, 0),
-    }))
-    .sort((a, b) => b.totalVolume - a.totalVolume)
+    .map(([name, pm]) => ({ name, total: Array.from(pm.values()).reduce((a, b) => a + b, 0) }))
+    .sort((a, b) => b.total - a.total)
     .slice(0, 5)
     .map((e) => e.name);
 
-  return weeks.map((week) => {
-    const data: any = { week };
-    topExercises.forEach((exerciseName) => {
-      const weekMap = exerciseMap.get(exerciseName);
-      data[exerciseName] = weekMap?.get(week) || 0;
+  return periods.map((periodLabel) => {
+    const row: any = { periodLabel };
+    topExercises.forEach((n) => {
+      row[n] = exerciseMap.get(n)?.get(periodLabel) || 0;
     });
-    return data;
+    return row;
   });
+}
+
+/** 부위별 볼륨: 일별/주별/월별 */
+function calculateVolumeByBodyPartByPeriod(
+  workoutSessions: { exercises: { exerciseName: string; sets: { weight: number; reps: number }[] }[] }[],
+  exercises: { name: string; bodyPart: BodyPart }[],
+  targetBodyParts: BodyPart[],
+  period: 'day' | 'week' | 'month'
+): { periodLabel: string } & Record<string, number>[] {
+  const exerciseToBodyPart = new Map<string, BodyPart>();
+  exercises.forEach((e) => exerciseToBodyPart.set(e.name, e.bodyPart));
+
+  const periods = (() => {
+    const PAST = period === 'day' ? 7 : 4;
+    const FUTURE = 5;
+    const now = new Date();
+    if (period === 'day') {
+      return Array.from({ length: PAST + 1 + FUTURE }, (_, i) => {
+        const d = addDays(now, i - PAST);
+        return format(d, 'MM/dd', { locale: ko });
+      });
+    }
+    if (period === 'week') {
+      return Array.from({ length: PAST + 1 + FUTURE }, (_, i) => {
+        const d = addWeeks(now, i - PAST);
+        return formatWeekLabel(startOfWeek(d, { locale: ko }));
+      });
+    }
+    return Array.from({ length: PAST + 1 + FUTURE }, (_, i) => {
+      const d = addMonths(now, i - PAST);
+      return formatMonthLabel(d);
+    });
+  })();
+
+  const getKey = (d: Date) =>
+    period === 'day'
+      ? format(d, 'MM/dd', { locale: ko })
+      : period === 'week'
+      ? formatWeekLabel(startOfWeek(d, { locale: ko }))
+      : formatMonthLabel(d);
+
+  const volumeByPartAndPeriod = new Map<string, Map<string, number>>();
+  targetBodyParts.forEach((bp) => volumeByPartAndPeriod.set(bp, new Map()));
+  periods.forEach((p) => targetBodyParts.forEach((bp) => volumeByPartAndPeriod.get(bp)!.set(p, 0)));
+
+  workoutSessions.forEach((session) => {
+    const sessionDate = parseISO(session.date);
+    const key = getKey(sessionDate);
+    if (!periods.includes(key)) return;
+
+    session.exercises.forEach((ex) => {
+      const bodyPart = exerciseToBodyPart.get(ex.exerciseName);
+      if (!bodyPart || !targetBodyParts.includes(bodyPart)) return;
+      const volume = ex.sets.reduce((sum, set) => sum + set.weight * set.reps, 0);
+      const partMap = volumeByPartAndPeriod.get(bodyPart)!;
+      partMap.set(key, (partMap.get(key) || 0) + volume);
+    });
+  });
+
+  return periods.map((periodLabel) => {
+    const row: any = { periodLabel };
+    targetBodyParts.forEach((bp) => {
+      row[bp] = volumeByPartAndPeriod.get(bp)?.get(periodLabel) || 0;
+    });
+    return row;
+  });
+}
+
+/** 운동별 볼륨 차트용 날짜 축 (오늘 중심) */
+function getVolumeChartDataCenteredOnToday(period: 'day' | 'week' | 'month'): { periodLabel: string }[] {
+  const PAST = period === 'day' ? 7 : 4;
+  const FUTURE = 5;
+  const now = new Date();
+
+  if (period === 'day') {
+    return Array.from({ length: PAST + 1 + FUTURE }, (_, i) => {
+      const d = addDays(now, i - PAST);
+      return { periodLabel: format(d, 'MM/dd', { locale: ko }) };
+    });
+  }
+  if (period === 'week') {
+    return Array.from({ length: PAST + 1 + FUTURE }, (_, i) => {
+      const d = addWeeks(now, i - PAST);
+      return { periodLabel: formatWeekLabel(startOfWeek(d, { locale: ko })) };
+    });
+  }
+  return Array.from({ length: PAST + 1 + FUTURE }, (_, i) => {
+    const d = addMonths(now, i - PAST);
+    return { periodLabel: formatMonthLabel(d) };
+  });
+}
+
+/** 인바디: 주/월별로 그룹화. 각 기간의 마지막(가장 최근) 기록 사용 */
+function aggregateInbodyByPeriod(
+  records: { date: string; weight?: number; muscleMass?: number; bodyFat?: number; notes?: string }[],
+  period: 'day' | 'week' | 'month'
+): { date: string; 체중: number; 근육량: number; 체지방량: number; 점수: number }[] {
+  if (records.length === 0) return [];
+
+  const parseRecord = (r: typeof records[0]) => {
+    const inbodyScore = r.notes?.includes('인바디점수:')
+      ? parseFloat(r.notes.split('인바디점수:')[1]?.split(',')[0]?.trim() || '0')
+      : 0;
+    return { 체중: r.weight || 0, 근육량: r.muscleMass || 0, 체지방량: r.bodyFat || 0, 점수: inbodyScore };
+  };
+
+  if (period === 'day') {
+    return records
+      .slice()
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .map((r) => ({
+        date: format(parseISO(r.date), 'MM/dd', { locale: ko }),
+        ...parseRecord(r),
+      }));
+  }
+
+  const groupKey = (d: Date) =>
+    period === 'week'
+      ? format(startOfWeek(d, { locale: ko }), 'yyyy-MM-dd')
+      : format(startOfMonth(d), 'yyyy-MM-dd');
+  const labelFormat = period === 'week' ? (d: Date) => formatWeekLabel(d) : (d: Date) => formatMonthLabel(d);
+
+  const map = new Map<string, ReturnType<typeof parseRecord>>();
+  records
+    .slice()
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .forEach((r) => {
+      const d = parseISO(r.date);
+      const key = groupKey(d);
+      map.set(key, parseRecord(r));
+    });
+
+  return Array.from(map.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([key]) => ({
+      date: labelFormat(parseISO(key)),
+      ...map.get(key)!,
+    }));
+}
+
+/** 오늘(또는 현재 주/월)을 중앙에 둔 인바디 차트용 날짜 축 */
+function getInbodyChartDataCenteredOnToday(
+  period: 'day' | 'week' | 'month'
+): { date: string }[] {
+  const PAST_SLOTS = period === 'day' ? 7 : 4;
+  const FUTURE_SLOTS = 5;
+  const now = new Date();
+
+  if (period === 'day') {
+    return Array.from({ length: PAST_SLOTS + 1 + FUTURE_SLOTS }, (_, i) => {
+      const d = addDays(now, i - PAST_SLOTS);
+      return { date: format(d, 'MM/dd', { locale: ko }) };
+    });
+  }
+  if (period === 'week') {
+    return Array.from({ length: PAST_SLOTS + 1 + FUTURE_SLOTS }, (_, i) => {
+      const d = addWeeks(now, i - PAST_SLOTS);
+      const weekStart = startOfWeek(d, { locale: ko });
+      return { date: formatWeekLabel(weekStart) };
+    });
+  }
+  return Array.from({ length: PAST_SLOTS + 1 + FUTURE_SLOTS }, (_, i) => {
+    const d = addMonths(now, i - PAST_SLOTS);
+    return { date: formatMonthLabel(d) };
+  });
+}
+
+/** 인바디 변화: 데이터 있는 기간만 + 오늘 + 미래 1칸. 맨 왼쪽에 한 칸 전(0값) 추가. 날짜 라벨만 반환 */
+function getInbodyChartDataOnly(
+  period: 'day' | 'week' | 'month',
+  raw: { date: string }[]
+): string[] {
+  const PAST_SLOTS = period === 'day' ? 7 : 4;
+  const now = new Date();
+  const fullLabels = (() => {
+    if (period === 'day') {
+      return Array.from({ length: PAST_SLOTS + 2 }, (_, i) => {
+        const d = addDays(now, i - PAST_SLOTS);
+        return format(d, 'MM/dd', { locale: ko });
+      });
+    }
+    if (period === 'week') {
+      return Array.from({ length: PAST_SLOTS + 2 }, (_, i) => {
+        const d = addWeeks(now, i - PAST_SLOTS);
+        return formatWeekLabel(startOfWeek(d, { locale: ko }));
+      });
+    }
+    return Array.from({ length: PAST_SLOTS + 2 }, (_, i) => {
+      const d = addMonths(now, i - PAST_SLOTS);
+      return formatMonthLabel(d);
+    });
+  })();
+  const todayLabel = fullLabels[PAST_SLOTS];
+  const futureLabel = fullLabels[PAST_SLOTS + 1];
+  const rawDateSet = new Set(raw.map((e) => e.date));
+  const pastAndToday = fullLabels.slice(0, PAST_SLOTS + 1);
+  const withDataOrToday = pastAndToday.filter((l) => rawDateSet.has(l) || l === todayLabel);
+  const firstLabel = withDataOrToday[0];
+  const firstIndex = fullLabels.indexOf(firstLabel);
+  const onePeriodBeforeLabel =
+    firstIndex > 0
+      ? fullLabels[firstIndex - 1]
+      : period === 'day'
+      ? format(addDays(now, -PAST_SLOTS - 1), 'MM/dd', { locale: ko })
+      : period === 'week'
+      ? formatWeekLabel(startOfWeek(addWeeks(now, -PAST_SLOTS - 1), { locale: ko }))
+      : formatMonthLabel(addMonths(now, -PAST_SLOTS - 1));
+  return [onePeriodBeforeLabel, ...withDataOrToday, futureLabel];
+}
+
+/** 중량 변화: 데이터 있는 날만 + 오늘 + 미래 1칸(오늘 가운데용). 날짜 라벨만 반환 */
+function getMaxWeightHistoryDataOnly(
+  period: 'day' | 'week' | 'month',
+  raw: { date: string; maxWeight: number }[]
+): string[] {
+  const PAST_SLOTS = period === 'day' ? 7 : 4;
+  const now = new Date();
+  const fullLabels = (() => {
+    if (period === 'day') {
+      return Array.from({ length: PAST_SLOTS + 2 }, (_, i) => {
+        const d = addDays(now, i - PAST_SLOTS);
+        return format(d, 'MM/dd', { locale: ko });
+      });
+    }
+    if (period === 'week') {
+      return Array.from({ length: PAST_SLOTS + 2 }, (_, i) => {
+        const d = addWeeks(now, i - PAST_SLOTS);
+        return formatWeekLabel(startOfWeek(d, { locale: ko }));
+      });
+    }
+    return Array.from({ length: PAST_SLOTS + 2 }, (_, i) => {
+      const d = addMonths(now, i - PAST_SLOTS);
+      return formatMonthLabel(d);
+    });
+  })();
+  const todayLabel = fullLabels[PAST_SLOTS];
+  const futureLabel = fullLabels[PAST_SLOTS + 1];
+  const rawDateSet = new Set(raw.map((e) => e.date));
+  const pastAndToday = fullLabels.slice(0, PAST_SLOTS + 1);
+  const withDataOrToday = pastAndToday.filter((l) => rawDateSet.has(l) || l === todayLabel);
+  const firstLabel = withDataOrToday[0];
+  const firstIndex = fullLabels.indexOf(firstLabel);
+  const onePeriodBeforeLabel =
+    firstIndex > 0
+      ? fullLabels[firstIndex - 1]
+      : period === 'day'
+      ? format(addDays(now, -PAST_SLOTS - 1), 'MM/dd', { locale: ko })
+      : period === 'week'
+      ? formatWeekLabel(startOfWeek(addWeeks(now, -PAST_SLOTS - 1), { locale: ko }))
+      : formatMonthLabel(addMonths(now, -PAST_SLOTS - 1));
+  return [onePeriodBeforeLabel, ...withDataOrToday, futureLabel];
+}
+
+function aggregateMaxWeightByPeriod(
+  history: { date: string; maxWeight: number }[],
+  period: 'day' | 'week' | 'month'
+): { date: string; maxWeight: number }[] {
+  if (history.length === 0) return history;
+
+  if (period === 'day') {
+    return history.map((entry) => ({
+      date: format(parseISO(entry.date), 'MM/dd', { locale: ko }),
+      maxWeight: entry.maxWeight,
+    }));
+  }
+
+  const groupKey = (d: Date) =>
+    period === 'week'
+      ? format(startOfWeek(d, { locale: ko }), 'yyyy-MM-dd')
+      : format(startOfMonth(d), 'yyyy-MM-dd');
+  const labelFormat = period === 'week' ? (d: Date) => formatWeekLabel(d) : (d: Date) => formatMonthLabel(d);
+
+  const map = new Map<string, number>();
+  history.forEach((entry) => {
+    const d = parseISO(entry.date);
+    const key = groupKey(d);
+    const prev = map.get(key) ?? 0;
+    map.set(key, Math.max(prev, entry.maxWeight));
+  });
+
+  return Array.from(map.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([key]) => ({
+      date: labelFormat(parseISO(key)),
+      maxWeight: map.get(key)!,
+    }));
 }
 
 function getMaxWeightHistories(workoutSessions: any[]) {
@@ -1087,47 +1966,38 @@ function getMaxWeightHistories(workoutSessions: any[]) {
 
   Object.keys(histories).forEach((name) => {
     histories[name] = histories[name]
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .map((entry) => ({
-        date: format(parseISO(entry.date), 'MM/dd', { locale: ko }),
-        maxWeight: entry.maxWeight,
-      }));
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   });
 
   return { histories, defaultExercise };
 }
 
-function getPRGraphData(personalRecords: any[], exerciseNames: string[]) {
-  const prMap = new Map<string, { date: string; value: number }[]>();
-
+function getPRDateOptions(personalRecords: any[], exerciseNames: string[]): string[] {
+  const dates = new Set<string>();
   personalRecords
     .filter((pr) => pr.type === 'maxWeight' && exerciseNames.includes(pr.exerciseName))
-    .forEach((pr) => {
-      if (!prMap.has(pr.exerciseName)) {
-        prMap.set(pr.exerciseName, []);
-      }
-      prMap.get(pr.exerciseName)!.push({
-        date: pr.date,
-        value: pr.value,
-      });
-    });
+    .forEach((pr) => dates.add(pr.date.split('T')[0]));
+  return Array.from(dates).sort((a, b) => b.localeCompare(a));
+}
 
-  const allDates = new Set<string>();
-  exerciseNames.forEach((name) => {
-    prMap.get(name)?.forEach((entry) => {
-      allDates.add(entry.date.split('T')[0]);
-    });
-  });
-
-  const sortedDates = Array.from(allDates).sort();
-
-  return sortedDates.map((date) => {
-    const data: any = { date: format(parseISO(date), 'MM/dd', { locale: ko }) };
-    exerciseNames.forEach((name) => {
-      const records = prMap.get(name) || [];
-      const recordForDate = records.find((r) => r.date.split('T')[0] === date);
-      data[name] = recordForDate ? recordForDate.value : 0;
-    });
-    return data;
+function getPRAsOfDate(
+  personalRecords: any[],
+  exerciseNames: string[],
+  asOfDate: string
+): { exerciseName: string; value: number }[] {
+  if (!asOfDate) {
+    return exerciseNames.map((name) => ({ exerciseName: name, value: 0 }));
+  }
+  return exerciseNames.map((name) => {
+    const records = personalRecords
+      .filter(
+        (pr) =>
+          pr.type === 'maxWeight' &&
+          pr.exerciseName === name &&
+          pr.date.split('T')[0] <= asOfDate
+      )
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const maxValue = records.length > 0 ? Math.max(...records.map((r) => r.value)) : 0;
+    return { exerciseName: name, value: maxValue };
   });
 }

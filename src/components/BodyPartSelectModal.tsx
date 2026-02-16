@@ -8,7 +8,7 @@ interface BodyPartSelectModalProps {
   onConfirm: (bodyPart: BodyPart | 'all') => void;
 }
 
-const bodyParts: BodyPart[] = ['가슴', '등', '어깨', '하체', '팔', '복근', '전신', '기타'];
+const bodyParts: BodyPart[] = ['가슴', '등', '어깨', '하체', '팔'];
 
 export default function BodyPartSelectModal({ isOpen, onClose, onConfirm }: BodyPartSelectModalProps) {
   const [selectedBodyPart, setSelectedBodyPart] = useState<BodyPart | 'all'>('all');

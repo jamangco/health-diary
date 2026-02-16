@@ -3,7 +3,7 @@ import { useStore } from '../store/useStore';
 import { Plus, Trash2, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Exercise, BodyPart } from '../types';
 
-const bodyParts: BodyPart[] = ['가슴', '등', '어깨', '하체', '팔', '복근', '전신', '기타'];
+const bodyParts: BodyPart[] = ['가슴', '등', '어깨', '하체', '팔'];
 const EXERCISES_PER_PAGE = 10;
 
 export default function ExerciseList() {
@@ -198,7 +198,7 @@ function ExerciseItem({
 function AddExerciseForm({ onClose }: { onClose: () => void }) {
   const { addExercise } = useStore();
   const [name, setName] = useState('');
-  const [bodyPart, setBodyPart] = useState<BodyPart>('기타');
+  const [bodyPart, setBodyPart] = useState<BodyPart>('가슴');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

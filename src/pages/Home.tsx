@@ -114,30 +114,28 @@ export default function Home() {
         </span>
       </div>
 
-      {/* 운동 기록하기 버튼 */}
-      <button
-        onClick={handleStartWorkout}
-        className="w-full bg-gradient-to-br from-blue-500 to-blue-600 active:from-blue-600 active:to-blue-700 text-white font-semibold py-5 px-4 rounded-2xl shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 transition-all active:scale-95"
-      >
-        <Dumbbell size={26} />
-        <span className="text-base">운동 기록하기</span>
-      </button>
-
-      {/* PR 기록하기 / 인바디 기록하기 버튼 */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* 운동 기록하기 / PR 기록하기 / 인바디 버튼 (한 줄) */}
+      <div className="grid grid-cols-3 gap-3">
+        <button
+          onClick={handleStartWorkout}
+          className="bg-gradient-to-br from-blue-500 to-blue-600 active:from-blue-600 active:to-blue-700 text-white font-semibold py-3 px-3 rounded-xl shadow-lg shadow-blue-500/30 flex flex-col items-center justify-center gap-1 transition-all active:scale-95"
+        >
+          <Dumbbell size={20} />
+          <span className="text-xs whitespace-nowrap">운동 기록하기</span>
+        </button>
         <button
           onClick={() => setIsPRModalOpen(true)}
-          className="bg-gradient-to-br from-purple-500 to-purple-600 active:from-purple-600 active:to-purple-700 text-white font-semibold py-5 px-4 rounded-2xl shadow-lg shadow-purple-500/30 flex items-center justify-center gap-2 transition-all active:scale-95"
+          className="bg-gradient-to-br from-purple-500 to-purple-600 active:from-purple-600 active:to-purple-700 text-white font-semibold py-3 px-3 rounded-xl shadow-lg shadow-purple-500/30 flex flex-col items-center justify-center gap-1 transition-all active:scale-95"
         >
-          <Award size={26} />
-          <span className="text-base">PR 기록하기</span>
+          <Award size={20} />
+          <span className="text-xs whitespace-nowrap">PR 기록하기</span>
         </button>
         <button
           onClick={() => setIsInbodyModalOpen(true)}
-          className="bg-gradient-to-br from-green-500 to-green-600 active:from-green-600 active:to-green-700 text-white font-semibold py-5 px-4 rounded-2xl shadow-lg shadow-green-500/30 flex items-center justify-center gap-2 transition-all active:scale-95"
+          className="bg-gradient-to-br from-green-500 to-green-600 active:from-green-600 active:to-green-700 text-white font-semibold py-3 px-3 rounded-xl shadow-lg shadow-green-500/30 flex flex-col items-center justify-center gap-1 transition-all active:scale-95"
         >
-          <Activity size={26} />
-          <span className="text-base">인바디 기록하기</span>
+          <Activity size={20} />
+          <span className="text-xs whitespace-nowrap">인바디 기록하기</span>
         </button>
       </div>
 
@@ -170,43 +168,43 @@ export default function Home() {
 
       {/* 이번주 운동 & 누적 운동 일수 */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-3 shadow-lg border border-gray-200 dark:border-gray-700">
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-1.5 mb-1.5">
-              <div className="p-1 bg-blue-500 rounded-lg">
-                <TrendingUp size={14} className="text-white" />
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-2.5 shadow-lg border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between gap-2 mb-0.5">
+            <div className="flex items-center gap-1">
+              <div className="p-0.5 bg-blue-500 rounded">
+                <TrendingUp size={12} className="text-white" />
               </div>
               <h2 className="text-xs font-semibold text-gray-700 dark:text-gray-300">
                 이번주 운동
               </h2>
             </div>
-            <div className="text-3xl font-bold text-blue-600 dark:text-blue-400 mb-1">
-              {thisWeekWorkoutCount}일
-            </div>
-            <div className="text-[10px] text-gray-600 dark:text-gray-400">
+            <span className="text-[10px] text-gray-500 dark:text-gray-400 whitespace-nowrap">
               {format(weekStart, 'MM/dd', { locale: ko })} - {format(weekEnd, 'MM/dd', { locale: ko })}
-            </div>
+            </span>
+          </div>
+          <div className="text-2xl font-bold text-blue-600 dark:text-blue-400 text-center">
+            {thisWeekWorkoutCount}일
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-3 shadow-lg border border-gray-200 dark:border-gray-700">
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-1.5 mb-1.5">
-              <div className="p-1 bg-purple-500 rounded-lg">
-                <TrendingUp size={14} className="text-white" />
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-2.5 shadow-lg border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between gap-2 mb-0.5">
+            <div className="flex items-center gap-1">
+              <div className="p-0.5 bg-purple-500 rounded">
+                <TrendingUp size={12} className="text-white" />
               </div>
               <h2 className="text-xs font-semibold text-gray-700 dark:text-gray-300">
                 누적 일수
               </h2>
             </div>
-            <div className="text-3xl font-bold text-purple-600 dark:text-purple-400 mb-1">
-              {totalWorkoutDays}일
-            </div>
             {firstWorkoutDate && (
-              <div className="text-[10px] text-gray-600 dark:text-gray-400">
+              <span className="text-[10px] text-gray-500 dark:text-gray-400 whitespace-nowrap">
                 {format(firstWorkoutDate, 'MM/dd', { locale: ko })}부터
-              </div>
+              </span>
             )}
+          </div>
+          <div className="text-2xl font-bold text-purple-600 dark:text-purple-400 text-center">
+            {totalWorkoutDays}일
           </div>
         </div>
       </div>

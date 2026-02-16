@@ -76,13 +76,21 @@ const defaultExercises: Exercise[] = [
   { id: '10', name: '트라이셉스 익스텐션', bodyPart: '팔', isCustom: false, isFavorite: false, createdAt: new Date().toISOString() },
 ];
 
+const LEGACY_BODY_PARTS = ['복근', '전신', '기타'];
+const migrateBodyPart = (bp: string) => (LEGACY_BODY_PARTS.includes(bp) ? '팔' : bp);
+
 const loadInitialState = () => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const data = JSON.parse(stored);
+      const rawExercises = data.exercises || defaultExercises;
+      const exercises = rawExercises.map((ex: Exercise) => ({
+        ...ex,
+        bodyPart: migrateBodyPart(ex.bodyPart),
+      }));
       return {
-        exercises: data.exercises || defaultExercises,
+        exercises,
         workoutSessions: data.workoutSessions || [],
         routines: data.routines || [],
         personalRecords: data.personalRecords || [],
@@ -401,8 +409,13 @@ export const useStore = create<AppState>((set, get) => ({
   importData: (dataString) => {
     try {
       const data = JSON.parse(dataString);
+      const rawExercises = data.exercises || defaultExercises;
+      const exercises = rawExercises.map((ex: Exercise) => ({
+        ...ex,
+        bodyPart: migrateBodyPart(ex.bodyPart),
+      }));
       const newState = {
-        exercises: data.exercises || defaultExercises,
+        exercises,
         workoutSessions: data.workoutSessions || [],
         routines: data.routines || [],
         personalRecords: data.personalRecords || [],

@@ -22,7 +22,7 @@ export default function ExerciseSetModal({
 }: ExerciseSetModalProps) {
   const { workoutSessions } = useStore();
   const [sets, setSets] = useState<WorkoutSet[]>([]);
-  const [setCount, setSetCount] = useState(4);
+  const [setCount, setSetCount] = useState(1);
 
   // 모달이 열릴 때 기존 세트 불러오기 또는 이전 기록 불러오기
   useEffect(() => {
@@ -36,13 +36,13 @@ export default function ExerciseSetModal({
           setSets(previousSets);
           setSetCount(previousSets.length);
         } else {
-          const defaultSets = Array.from({ length: 4 }, (_, i) => ({
+          const defaultSets = Array.from({ length: 1 }, (_, i) => ({
             id: Date.now().toString() + Math.random() + i,
             reps: 10,
             weight: 0,
           }));
           setSets(defaultSets);
-          setSetCount(4);
+          setSetCount(1);
         }
       }
     }

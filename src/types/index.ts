@@ -4,10 +4,7 @@ export type BodyPart =
   | '등' 
   | '어깨' 
   | '하체' 
-  | '팔' 
-  | '복근' 
-  | '전신'
-  | '기타';
+  | '팔';
 
 // 운동 정보
 export interface Exercise {

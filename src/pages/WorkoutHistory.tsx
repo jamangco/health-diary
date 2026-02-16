@@ -4,7 +4,15 @@ import { useStore } from '../store/useStore';
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { Calendar, List, ChevronLeft, ChevronRight, Trash2, Edit, X } from 'lucide-react';
-import { WorkoutSession, Exercise } from '../types';
+import { WorkoutSession, Exercise, BodyPart } from '../types';
+
+const BODY_PART_COLORS: Record<string, string> = {
+  가슴: '#ef4444',
+  등: '#3b82f6',
+  하체: '#10b981',
+  어깨: '#f59e0b',
+  팔: '#a855f7',
+};
 
 function getBodyPartsForSession(session: WorkoutSession, exercises: Exercise[]): string[] {
   const parts = new Set<string>();
@@ -313,7 +321,7 @@ function CalendarView({
             <div
               key={dateKey}
               onClick={() => onDateSelect(day)}
-              className={`aspect-[1/0.75] p-1.5 border-2 rounded-xl cursor-pointer transition-all active:scale-95 ${
+              className={`aspect-[1/0.85] p-1.5 border-2 rounded-xl cursor-pointer transition-all active:scale-95 ${
                 isSelected
                   ? 'bg-blue-600 text-white border-blue-600 shadow-md'
                   : isToday
@@ -325,17 +333,16 @@ function CalendarView({
                 {format(day, 'd')}
               </div>
               {sessions.length > 0 && bodyPartsForDay.length > 0 && (
-                <div className="text-xs">
-                  <div className="flex flex-wrap justify-center gap-0.5">
-                    {bodyPartsForDay.slice(0, 3).map((part) => (
-                      <span
-                        key={part}
-                        className="text-xs px-1.5 py-0.5 bg-white/20 rounded font-medium"
-                      >
-                        {part}
-                      </span>
-                    ))}
-                  </div>
+                <div className="w-full mt-1 space-y-0.5">
+                  {bodyPartsForDay.slice(0, 3).map((part) => (
+                    <span
+                      key={part}
+                      className="block w-full text-[8px] py-px rounded font-semibold text-white text-center leading-tight"
+                      style={{ backgroundColor: BODY_PART_COLORS[part] || '#64748b' }}
+                    >
+                      {part}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>

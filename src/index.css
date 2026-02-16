@@ -29,3 +29,12 @@ button, a {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
+
+/* 스크롤바 숨김 (터치/드래그로 스크롤 가능) */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
