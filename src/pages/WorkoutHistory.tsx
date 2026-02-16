@@ -4,7 +4,7 @@ import { useStore } from '../store/useStore';
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { Calendar, List, ChevronLeft, ChevronRight, Trash2, Edit, X } from 'lucide-react';
-import { WorkoutSession, Exercise, BodyPart } from '../types';
+import { WorkoutSession, Exercise } from '../types';
 
 const BODY_PART_COLORS: Record<string, string> = {
   가슴: '#ef4444',

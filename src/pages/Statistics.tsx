@@ -110,7 +110,8 @@ export default function Statistics() {
     });
   } else {
     volumeChartDataByBodyPart.forEach((row) => {
-      volumeRawByLabel.set(row.periodLabel, { volume: row[selectedVolumeFilter] || 0 });
+      const v = row[selectedVolumeFilter];
+      volumeRawByLabel.set(row.periodLabel, { volume: typeof v === 'number' ? v : 0 });
     });
   }
   const volumePastSlots = volumePeriod === 'day' ? 7 : 4;
@@ -851,7 +852,7 @@ export default function Statistics() {
                       <Line
                         type="monotone"
                         dataKey="volume"
-                        name={selectedVolumeFilter === 'all' ? '볼륨' : selectedVolumeFilter}
+                        name={(selectedVolumeFilter as string) === 'all' ? '볼륨' : selectedVolumeFilter}
                         stroke="#3b82f6"
                         strokeWidth={2}
                         connectNulls={false}
@@ -1586,9 +1587,9 @@ function getBodyPartRatioData(
 
 /** 운동별 볼륨: 일별/주별/월별 */
 function calculateExerciseVolumesByPeriod(
-  workoutSessions: any[],
+  workoutSessions: { date: string; exercises: { exerciseName: string; sets: { weight: number; reps: number }[] }[] }[],
   period: 'day' | 'week' | 'month'
-): { periodLabel: string } & Record<string, number>[] {
+): { periodLabel: string; [key: string]: string | number }[] {
   const exerciseMap = new Map<string, Map<string, number>>();
   const getPeriods = () => {
     const PAST = period === 'day' ? 7 : 4;
@@ -1642,7 +1643,7 @@ function calculateExerciseVolumesByPeriod(
     .map((e) => e.name);
 
   return periods.map((periodLabel) => {
-    const row: any = { periodLabel };
+    const row: { periodLabel: string; [key: string]: string | number } = { periodLabel };
     topExercises.forEach((n) => {
       row[n] = exerciseMap.get(n)?.get(periodLabel) || 0;
     });
@@ -1652,11 +1653,11 @@ function calculateExerciseVolumesByPeriod(
 
 /** 부위별 볼륨: 일별/주별/월별 */
 function calculateVolumeByBodyPartByPeriod(
-  workoutSessions: { exercises: { exerciseName: string; sets: { weight: number; reps: number }[] }[] }[],
+  workoutSessions: { date: string; exercises: { exerciseName: string; sets: { weight: number; reps: number }[] }[] }[],
   exercises: { name: string; bodyPart: BodyPart }[],
   targetBodyParts: BodyPart[],
   period: 'day' | 'week' | 'month'
-): { periodLabel: string } & Record<string, number>[] {
+): { periodLabel: string; [key: string]: string | number }[] {
   const exerciseToBodyPart = new Map<string, BodyPart>();
   exercises.forEach((e) => exerciseToBodyPart.set(e.name, e.bodyPart));
 
@@ -1708,7 +1709,7 @@ function calculateVolumeByBodyPartByPeriod(
   });
 
   return periods.map((periodLabel) => {
-    const row: any = { periodLabel };
+    const row: { periodLabel: string; [key: string]: string | number } = { periodLabel };
     targetBodyParts.forEach((bp) => {
       row[bp] = volumeByPartAndPeriod.get(bp)?.get(periodLabel) || 0;
     });
@@ -1786,33 +1787,6 @@ function aggregateInbodyByPeriod(
       date: labelFormat(parseISO(key)),
       ...map.get(key)!,
     }));
-}
-
-/** 오늘(또는 현재 주/월)을 중앙에 둔 인바디 차트용 날짜 축 */
-function getInbodyChartDataCenteredOnToday(
-  period: 'day' | 'week' | 'month'
-): { date: string }[] {
-  const PAST_SLOTS = period === 'day' ? 7 : 4;
-  const FUTURE_SLOTS = 5;
-  const now = new Date();
-
-  if (period === 'day') {
-    return Array.from({ length: PAST_SLOTS + 1 + FUTURE_SLOTS }, (_, i) => {
-      const d = addDays(now, i - PAST_SLOTS);
-      return { date: format(d, 'MM/dd', { locale: ko }) };
-    });
-  }
-  if (period === 'week') {
-    return Array.from({ length: PAST_SLOTS + 1 + FUTURE_SLOTS }, (_, i) => {
-      const d = addWeeks(now, i - PAST_SLOTS);
-      const weekStart = startOfWeek(d, { locale: ko });
-      return { date: formatWeekLabel(weekStart) };
-    });
-  }
-  return Array.from({ length: PAST_SLOTS + 1 + FUTURE_SLOTS }, (_, i) => {
-    const d = addMonths(now, i - PAST_SLOTS);
-    return { date: formatMonthLabel(d) };
-  });
 }
 
 /** 인바디 변화: 데이터 있는 기간만 + 오늘 + 미래 1칸. 맨 왼쪽에 한 칸 전(0값) 추가. 날짜 라벨만 반환 */

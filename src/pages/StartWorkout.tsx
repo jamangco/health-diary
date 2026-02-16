@@ -4,7 +4,7 @@ import { useStore } from '../store/useStore';
 import { format, parseISO } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { Plus, X } from 'lucide-react';
-import { WorkoutExercise, BodyPart } from '../types';
+import { WorkoutSession, WorkoutExercise, BodyPart } from '../types';
 import ExerciseSetModal from '../components/ExerciseSetModal';
 
 export default function StartWorkout() {
@@ -118,9 +118,10 @@ function ActiveWorkoutView({
     } else {
       // 해당 날짜에 기록이 없으면 빈 세션으로 전환
       setCurrentWorkout({
+        id: `new-${Date.now()}`,
         date: newDateISO,
         exercises: [],
-      });
+      } as WorkoutSession);
     }
   };
 
