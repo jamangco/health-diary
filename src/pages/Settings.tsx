@@ -1,6 +1,6 @@
 import { useStore } from '../store/useStore';
 import { useAuth } from '../hooks/useAuth';
-import { Moon, Sun, Download, Upload, Trash2, LogIn, LogOut } from 'lucide-react';
+import { Moon, Sun, Download, Upload, Trash2, LogIn, LogOut, X } from 'lucide-react';
 import { useState } from 'react';
 
 export default function Settings() {
@@ -8,7 +8,8 @@ export default function Settings() {
   const { user, loading: authLoading, isConfigured, signInWithEmail, signUpWithEmail, logout } = useAuth();
   const [importError, setImportError] = useState<string | null>(null);
   const [logoutLoading, setLogoutLoading] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
@@ -85,6 +86,19 @@ export default function Settings() {
     setLogoutLoading(false);
   };
 
+  const openAuthModal = (mode: 'login' | 'signup') => {
+    setAuthMode(mode);
+    setAuthError(null);
+    setAuthEmail('');
+    setAuthPassword('');
+    setAuthModalOpen(true);
+  };
+
+  const closeAuthModal = () => {
+    setAuthModalOpen(false);
+    setAuthError(null);
+  };
+
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
@@ -102,9 +116,9 @@ export default function Settings() {
     } else if (authMode === 'signup') {
       setAuthError(null);
       alert('회원가입이 완료되었습니다. 이메일 확인이 필요할 수 있습니다.');
+      closeAuthModal();
     } else {
-      setAuthEmail('');
-      setAuthPassword('');
+      closeAuthModal();
     }
   };
 
@@ -144,50 +158,22 @@ export default function Settings() {
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
                 로그인하면 데이터가 클라우드에 자동으로 백업됩니다.
               </p>
-              <div className="flex gap-2 mb-3">
+              <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => { setAuthMode('login'); setAuthError(null); }}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${authMode === 'login' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300'}`}
+                  onClick={() => openAuthModal('login')}
+                  className="flex-1 py-3 rounded-lg text-sm font-medium bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 transition-colors"
                 >
                   로그인
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setAuthMode('signup'); setAuthError(null); }}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${authMode === 'signup' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300'}`}
+                  onClick={() => openAuthModal('signup')}
+                  className="flex-1 py-3 rounded-lg text-sm font-medium bg-blue-500 hover:bg-blue-600 text-white transition-colors"
                 >
                   회원가입
                 </button>
               </div>
-              <form onSubmit={handleAuthSubmit} className="space-y-3">
-                <input
-                  type="email"
-                  placeholder="이메일"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  autoComplete="email"
-                />
-                <input
-                  type="password"
-                  placeholder="비밀번호"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
-                />
-                {authError && (
-                  <p className="text-sm text-red-600 dark:text-red-400">{authError}</p>
-                )}
-                <button
-                  type="submit"
-                  disabled={authSubmitLoading}
-                  className="w-full py-3 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {authSubmitLoading ? '처리 중...' : authMode === 'login' ? '로그인' : '회원가입'}
-                </button>
-              </form>
             </div>
           )}
         </div>
@@ -316,6 +302,60 @@ export default function Settings() {
       <div className="text-center text-sm text-gray-500 dark:text-gray-400">
         <p>운동 기록 앱 v1.0.0</p>
       </div>
+
+      {/* 로그인/회원가입 모달 */}
+      {authModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={closeAuthModal}
+        >
+          <div
+            className="w-full max-w-md mx-4 bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl shadow-2xl p-6 border border-gray-200 dark:border-gray-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                {authMode === 'login' ? '로그인' : '회원가입'}
+              </h2>
+              <button
+                type="button"
+                onClick={closeAuthModal}
+                className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleAuthSubmit} className="space-y-4">
+              <input
+                type="email"
+                placeholder="이메일 주소"
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                autoComplete="email"
+              />
+              <input
+                type="password"
+                placeholder="비밀번호"
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
+              />
+              {authError && (
+                <p className="text-sm text-red-600 dark:text-red-400">{authError}</p>
+              )}
+              <button
+                type="submit"
+                disabled={authSubmitLoading}
+                className="w-full py-3 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                {authSubmitLoading ? '처리 중...' : authMode === 'login' ? '로그인' : '회원가입'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
