@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useStore } from './store/useStore';
+import { useAuth } from './hooks/useAuth';
 import Layout from './components/Layout';
+import { CloudSync } from './components/CloudSync';
 import Home from './pages/Home';
 import WorkoutHistory from './pages/WorkoutHistory';
 import StartWorkout from './pages/StartWorkout';
@@ -12,6 +14,7 @@ import Settings from './pages/Settings';
 
 function App() {
   const { settings, loadFromStorage } = useStore();
+  const { user } = useAuth();
 
   useEffect(() => {
     // 다크모드 초기화
@@ -20,13 +23,13 @@ function App() {
     } else {
       document.documentElement.classList.remove('dark');
     }
-    
-    // 스토리지에서 데이터 로드
+    // 스토리지에서 데이터 로드 (로그인 전/비로그인 시 로컬 데이터)
     loadFromStorage();
   }, [settings.darkMode, loadFromStorage]);
 
   return (
     <BrowserRouter>
+      {user && <CloudSync user={user} />}
       <Layout>
         <Routes>
           <Route path="/" element={<Home />} />

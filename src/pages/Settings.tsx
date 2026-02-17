@@ -1,10 +1,18 @@
 import { useStore } from '../store/useStore';
-import { Moon, Sun, Download, Upload, Trash2 } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
+import { Moon, Sun, Download, Upload, Trash2, LogIn, LogOut } from 'lucide-react';
 import { useState } from 'react';
 
 export default function Settings() {
   const { settings, updateSettings, exportData, importData } = useStore();
+  const { user, loading: authLoading, isConfigured, signInWithEmail, signUpWithEmail, logout } = useAuth();
   const [importError, setImportError] = useState<string | null>(null);
+  const [logoutLoading, setLogoutLoading] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authSubmitLoading, setAuthSubmitLoading] = useState(false);
 
   const handleToggleDarkMode = () => {
     updateSettings({ darkMode: !settings.darkMode });
@@ -71,11 +79,119 @@ export default function Settings() {
     }
   };
 
+  const handleLogout = async () => {
+    setLogoutLoading(true);
+    await logout();
+    setLogoutLoading(false);
+  };
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    if (!authEmail.trim() || !authPassword) {
+      setAuthError('이메일과 비밀번호를 입력하세요.');
+      return;
+    }
+    setAuthSubmitLoading(true);
+    const result = authMode === 'login'
+      ? await signInWithEmail(authEmail.trim(), authPassword)
+      : await signUpWithEmail(authEmail.trim(), authPassword);
+    setAuthSubmitLoading(false);
+    if (result.error) {
+      setAuthError(result.error);
+    } else if (authMode === 'signup') {
+      setAuthError(null);
+      alert('회원가입이 완료되었습니다. 이메일 확인이 필요할 수 있습니다.');
+    } else {
+      setAuthEmail('');
+      setAuthPassword('');
+    }
+  };
+
   return (
     <div className="space-y-5">
       <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
         설정
       </h1>
+
+      {/* 이메일 로그인 / 회원가입 / 로그아웃 */}
+      {isConfigured && (
+        <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-5 shadow-lg border border-gray-200 dark:border-gray-700">
+          <h2 className="font-bold text-gray-900 dark:text-white text-lg flex items-center gap-2 mb-4">
+            <div className="p-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg">
+              {user ? <LogOut size={18} className="text-gray-600 dark:text-gray-300" /> : <LogIn size={18} className="text-gray-600 dark:text-gray-300" />}
+            </div>
+            클라우드 계정
+          </h2>
+          {authLoading ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">확인 중...</p>
+          ) : user ? (
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-sm text-gray-700 dark:text-gray-300 break-all">
+                {user.email ?? '로그인됨'}
+              </p>
+              <button
+                onClick={handleLogout}
+                disabled={logoutLoading}
+                className="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                <LogOut size={16} />
+                로그아웃
+              </button>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                로그인하면 데이터가 클라우드에 자동으로 백업됩니다.
+              </p>
+              <div className="flex gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() => { setAuthMode('login'); setAuthError(null); }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${authMode === 'login' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300'}`}
+                >
+                  로그인
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAuthMode('signup'); setAuthError(null); }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${authMode === 'signup' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300'}`}
+                >
+                  회원가입
+                </button>
+              </div>
+              <form onSubmit={handleAuthSubmit} className="space-y-3">
+                <input
+                  type="email"
+                  placeholder="이메일"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  autoComplete="email"
+                />
+                <input
+                  type="password"
+                  placeholder="비밀번호"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
+                />
+                {authError && (
+                  <p className="text-sm text-red-600 dark:text-red-400">{authError}</p>
+                )}
+                <button
+                  type="submit"
+                  disabled={authSubmitLoading}
+                  className="w-full py-3 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {authSubmitLoading ? '처리 중...' : authMode === 'login' ? '로그인' : '회원가입'}
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 다크모드 */}
       <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 rounded-2xl p-5 shadow-lg border border-gray-200 dark:border-gray-700">
